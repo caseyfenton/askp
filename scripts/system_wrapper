@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -e
+
+# Configuration
+ASKD_HOME="${HOME}/.askd"
+ASKD_ENV="${ASKD_HOME}/env"
+ASKD_CONFIG="${ASKD_HOME}/config"
+ASKD_LOGS="${ASKD_HOME}/logs"
+VERSION="2.0.0"
+
+# Color output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Logging
+log() { echo -e "${2:-$NC}$1${NC}"; }
+info() { log "$1" "$GREEN"; }
+warn() { log "$1" "$YELLOW"; }
+error() { log "$1" "$RED"; }
+
+# Ensure ASKD home directory exists
+setup_home() {
+    mkdir -p "${ASKD_HOME}" "${ASKD_LOGS}"
+    touch "${ASKD_CONFIG}"
+}
+
+# Create/update virtual environment
+setup_env() {
+    if [ ! -d "${ASKD_ENV}" ]; then
+        info "Creating virtual environment..."
+        python3 -m venv "${ASKD_ENV}"
+    fi
+    
+    # Activate environment
+    source "${ASKD_ENV}/bin/activate"
+    
+    # Update pip and install/upgrade dependencies
+    pip install --quiet --upgrade pip
+    pip install --quiet --upgrade -e /Users/casey/CascadeProjects/askd
+}
+
+# Main command execution
+main() {
+    # Setup if needed
+    setup_home
+    setup_env
+    
+    # Get the command name
+    CMD_NAME=$(basename "$0")
+    
+    # Execute actual command
+    if [ "$1" = "--version" ]; then
+        echo "askd version ${VERSION}"
+    else
+        # All commands (ask, askp, askd) use the same CLI module
+        python -m askd.cli "$@"
+    fi
+}
+
+main "$@"

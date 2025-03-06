@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDE
+.vscode/
+*.code-workspace
+
+# Mac
+.DS_Store
+
+# Environment
+.env
+.venv/
+.askd/
+
+# Results and temporary files
+perplexity_results/
+
+# Hallucinated files
+hallucinated_files/
+
+# Deep reasoning (work in progress)
+create_deep_reasoning_prompt.sh
+*_deep_reasoning_prompt.txt
