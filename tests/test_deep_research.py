@@ -14,13 +14,18 @@ class TestDeepResearch:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "overview": "Test overview",
+        # Create a properly formatted JSON response that the function will parse
+        mock_response.choices[0].message.content = """
+        Here's a research plan:
+        
+        {
+            "overview": "Test overview for research",
             "research_queries": [
-                "Section 1 query",
-                "Section 2 query"
+                "First research query about the topic",
+                "Second research query exploring another aspect"
             ]
-        })
+        }
+        """
         return mock_response
     
     @patch("src.askp.deep_research.OpenAI")
@@ -35,10 +40,11 @@ class TestDeepResearch:
         result = generate_research_plan("Test query", "test-model", 0.7)
         
         # Assertions
-        assert "overview" in result
-        assert "research_queries" in result
-        assert len(result["research_queries"]) == 2
-        assert "Section 1 query" in result["research_queries"][0]
+        assert "research_overview" in result
+        assert "research_sections" in result
+        assert len(result["research_sections"]) == 2
+        assert "First research query" in result["research_sections"][0]["description"]
+        assert "Second research query" in result["research_sections"][1]["description"]
         
         # Verify API call
         mock_client.chat.completions.create.assert_called_once()
@@ -48,10 +54,10 @@ class TestDeepResearch:
         """Test creating research queries from a plan."""
         # Setup mock
         mock_generate_plan.return_value = {
-            "overview": "Test overview",
-            "research_queries": [
-                "Section 1 query",
-                "Section 2 query"
+            "research_overview": "Test overview",
+            "research_sections": [
+                {"title": "Section 1: First query", "description": "First query"},
+                {"title": "Section 2: Second query", "description": "Second query"}
             ]
         }
         
@@ -61,5 +67,5 @@ class TestDeepResearch:
         # Assertions
         assert len(queries) == 3  # Original query + 2 section queries
         assert queries[0] == "Test query"
-        assert queries[1] == "Section 1 query"
-        assert queries[2] == "Section 2 query"
+        assert queries[1] == "First query"
+        assert queries[2] == "Second query"
