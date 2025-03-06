@@ -6,7 +6,7 @@ ASKP_HOME="${HOME}/.askp"
 ASKP_ENV="${ASKP_HOME}/env"
 ASKP_CONFIG="${ASKP_HOME}/config"
 ASKP_LOGS="${ASKP_HOME}/logs"
-VERSION="2.0.0"
+VERSION="2.1.0"
 
 # Color output
 RED='\033[0;31m'

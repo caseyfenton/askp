@@ -1,134 +1,100 @@
 #!/bin/bash
-# Comprehensive fix for askp/askd conflicts
+set -e
 
-# Color output
-RED='\033[0;31m'
+# Color output for better visibility
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Logging
-log() { echo -e "${2:-$NC}$1${NC}"; }
-info() { log "$1" "$GREEN"; }
-warn() { log "$1" "$YELLOW"; }
-error() { log "$1" "$RED"; }
+echo -e "${BLUE}=== ASKP Complete Fix Script ===${NC}"
+echo -e "${BLUE}Fixing all ASKP CLI installation issues${NC}"
 
-echo -e "${GREEN}=== ASKP Complete Fix Tool ===${NC}"
-echo -e "This script will completely resolve all askp/askd conflicts"
-echo
+# Step 1: Ensure we have a clean state
+echo -e "\n${GREEN}Step 1: Cleaning up existing files and links${NC}"
+# Remove any existing symlinks
+rm -f ~/.local/bin/askp ~/.local/bin/ask 2>/dev/null || true
+rm -f ~/bin/askp ~/bin/ask 2>/dev/null || true
+echo "Removed existing symlinks"
 
-# Create backup directory
-BACKUP_DIR="$HOME/.askp_complete_backup_$(date +%Y%m%d%H%M%S)"
-mkdir -p "$BACKUP_DIR"
-info "Created backup directory: $BACKUP_DIR"
-
-# Step 1: Backup and disable old .askd environment
-if [ -d "$HOME/.askd" ]; then
-    echo -e "${YELLOW}Found old .askd environment - backing up${NC}"
-    cp -pr "$HOME/.askd" "$BACKUP_DIR/"
-    # Rename rather than delete to preserve data but prevent usage
-    mv "$HOME/.askd" "$HOME/.askd_old"
-    echo "  ✓ Old .askd environment backed up and renamed"
+# Step 2: Update the Python package
+echo -e "\n${GREEN}Step 2: Reinstalling the ASKP package${NC}"
+cd "$(dirname "$0")"
+if [ -d ~/.askp/env ]; then
+  source ~/.askp/env/bin/activate
+  pip install --quiet --upgrade -e .
+  deactivate
+  echo "Updated ASKP package installation"
+else
+  echo -e "${YELLOW}Creating new virtual environment${NC}"
+  mkdir -p ~/.askp
+  python3 -m venv ~/.askp/env
+  source ~/.askp/env/bin/activate
+  pip install --quiet --upgrade pip wheel
+  pip install --quiet -e .
+  deactivate
+  echo "Created new virtual environment and installed ASKP"
 fi
 
-# Step 2: Remove any remaining askp/askd executables
-echo -e "${YELLOW}Removing any remaining askp/askd executables...${NC}"
-ASKP_EXECS=$(which -a askp 2>/dev/null || echo "")
-ASKD_EXECS=$(which -a askd 2>/dev/null || echo "")
-ASK_EXECS=$(which -a ask 2>/dev/null || echo "")
+# Step 3: Create proper wrapper scripts
+echo -e "\n${GREEN}Step 3: Creating wrapper scripts${NC}"
+mkdir -p ~/.local/bin
 
-# Create backup subdirectories
-mkdir -p "$BACKUP_DIR/bin"
-
-# Process all executables
-for exec_file in $ASKP_EXECS $ASKD_EXECS $ASK_EXECS; do
-    # Skip the main askp env executable
-    if [[ "$exec_file" != "$HOME/.askp/env/bin/askp" ]]; then
-        base_name=$(basename "$exec_file")
-        dir_name=$(dirname "$exec_file")
-        mkdir -p "$BACKUP_DIR/$dir_name"
-        cp -p "$exec_file" "$BACKUP_DIR/$exec_file" 2>/dev/null
-        rm -f "$exec_file" 2>/dev/null
-        echo "  ✓ Removed: $exec_file"
-    else
-        echo "  ✓ Keeping main executable: $exec_file"
-    fi
-done
-
-# Step 3: Create fresh clean scripts in common bin directories
-echo -e "${YELLOW}Creating new clean scripts...${NC}"
-for bin_dir in "$HOME/.local/bin" "$HOME/bin"; do
-    if [ -d "$bin_dir" ]; then
-        # Create askp launcher
-        cat > "$bin_dir/askp" << 'ASKP'
+cat > ~/.local/bin/askp << 'SCRIPT'
 #!/bin/bash
-# ASKP CLI Launcher - Clean version
+source ~/.askp/env/bin/activate > /dev/null 2>&1
+exec python -m askp.cli "$@"
+SCRIPT
+chmod +x ~/.local/bin/askp
+echo "Created ~/.local/bin/askp"
 
-# Environment setup
-export ASKP_HOME="$HOME/.askp"
-export ASKP_ENV="$ASKP_HOME/env"
+cat > ~/.local/bin/ask << 'SCRIPT'
+#!/bin/bash
+source ~/.askp/env/bin/activate > /dev/null 2>&1
+exec python -m askp.cli "$@"
+SCRIPT
+chmod +x ~/.local/bin/ask
+echo "Created ~/.local/bin/ask"
 
-# Ensure we use the right Python interpreter
-if [ -f "$ASKP_ENV/bin/python" ]; then
-    "$ASKP_ENV/bin/python" -m askp.cli "$@"
-else
-    echo "Error: ASKP environment not found. Please reinstall ASKP."
-    exit 1
-fi
-ASKP
-        chmod +x "$bin_dir/askp"
-        
-        # Create ask symlink
-        ln -sf "$bin_dir/askp" "$bin_dir/ask"
-        
-        echo "  ✓ Created clean scripts in $bin_dir"
-    fi
+# Step 4: Clean up shell configurations
+echo -e "\n${GREEN}Step 4: Cleaning up shell configurations${NC}"
+for rc_file in ~/.bashrc ~/.bash_profile ~/.zshrc ~/.profile; do
+  if [ -f "$rc_file" ]; then
+    cp "$rc_file" "$rc_file.bak.$(date +%Y%m%d%H%M%S)"
+    sed -i.tmp '/alias ask=.*/d' "$rc_file"
+    sed -i.tmp '/alias askp=.*/d' "$rc_file"
+    rm -f "$rc_file.tmp"
+    echo "Cleaned up aliases in $rc_file"
+  fi
 done
 
-# Step 4: Update PATH precedence to ensure new scripts are found first
-echo -e "${YELLOW}Updating PATH settings...${NC}"
-PATH_UPDATE=$(cat << 'PATH_SCRIPT'
-# Added by ASKP complete fix script
-export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
-PATH_SCRIPT
-)
-
-for rc_file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    if [ -f "$rc_file" ]; then
-        if ! grep -q "Added by ASKP complete fix script" "$rc_file"; then
-            cp -p "$rc_file" "$BACKUP_DIR/"
-            echo -e "\n$PATH_UPDATE" >> "$rc_file"
-            echo "  ✓ Updated PATH in $rc_file"
-        fi
-    fi
-done
-
-# Step 5: Final verification
-echo -e "${YELLOW}Verifying installation...${NC}"
-
-# Ensure askp environment is properly set up
-if [ ! -d "$HOME/.askp/env" ]; then
-    echo "  ⚠ ASKP environment not found, creating it..."
-    mkdir -p "$HOME/.askp"
-    cd "$HOME/.askp"
-    python3 -m venv env
-    source env/bin/activate
-    pip install --quiet --upgrade pip
-
-    # Install askp package
-    if [ -d "/Users/casey/CascadeProjects/askp" ]; then
-        pip install --quiet -e "/Users/casey/CascadeProjects/askp"
-        echo "  ✓ Installed ASKP package from /Users/casey/CascadeProjects/askp"
-    else
-        echo "  ⚠ Could not find ASKP package directory"
-    fi
-else
-    echo "  ✓ ASKP environment exists"
+# Ensure .local/bin is in PATH
+if ! grep -q 'PATH="$HOME/.local/bin:$PATH"' ~/.bashrc; then
+  echo -e '\n# ASKP PATH setting\nexport PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+  echo "Added PATH setting to ~/.bashrc"
 fi
 
-echo
-echo -e "${GREEN}Clean-up and fixes completed!${NC}"
-echo -e "Backup created at: $BACKUP_DIR"
-echo -e "To use the new installation immediately, please run:"
-echo -e "  source $HOME/.bashrc  # or .zshrc if using zsh"
-echo -e "\nThen try running 'askp' or 'ask'"
+if [ -f ~/.zshrc ] && ! grep -q 'PATH="$HOME/.local/bin:$PATH"' ~/.zshrc; then
+  echo -e '\n# ASKP PATH setting\nexport PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+  echo "Added PATH setting to ~/.zshrc"
+fi
+
+# Step 5: Verify installation
+echo -e "\n${GREEN}Step 5: Verifying installation${NC}"
+echo "ASKP script location: $(which askp 2>/dev/null || echo 'Not found')"
+echo "ASK script location: $(which ask 2>/dev/null || echo 'Not found')"
+
+# Step 6: Instructions
+echo -e "\n${YELLOW}Installation complete!${NC}"
+echo -e "${GREEN}To use ASKP, please restart your terminal or run:${NC}"
+echo '  source ~/.bashrc  # For bash shell'
+echo '  source ~/.zshrc   # For zsh shell'
+
+# Step 7: Optional pip package
+echo -e "\n${BLUE}=== ADDITIONAL INFORMATION ===${NC}"
+echo -e "You asked about a pip package for ASKP. Currently, ASKP is set up for local development."
+echo -e "If you want to make it available as a global pip package, you would need to:"
+echo -e "1. Upload it to PyPI with: python -m build && python -m twine upload dist/*"
+echo -e "2. Then users could install with: pip install askp"
+echo -e "3. For now, the current installation approach with the wrapper scripts is recommended"
