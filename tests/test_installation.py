@@ -1,4 +1,4 @@
-"""Tests for ASKD installation and setup."""
+"""Tests for ASKP installation and setup."""
 import os
 import subprocess
 import sys
@@ -15,11 +15,11 @@ def test_install_script_exists():
     assert install_script.exists(), "install.sh not found"
     assert os.access(install_script, os.X_OK), "install.sh not executable"
 
-def test_askd_wrapper_exists():
-    """Test that askd wrapper exists and is executable."""
-    wrapper = Path("scripts/askd")
-    assert wrapper.exists(), "askd wrapper not found"
-    assert os.access(wrapper, os.X_OK), "askd wrapper not executable"
+def test_askp_wrapper_exists():
+    """Test that askp wrapper exists and is executable."""
+    wrapper = Path("scripts/askp")
+    assert wrapper.exists(), "askp wrapper not found"
+    assert os.access(wrapper, os.X_OK), "askp wrapper not executable"
 
 def test_package_structure():
     """Test package directory structure."""
@@ -28,8 +28,8 @@ def test_package_structure():
         "requirements.txt",
         "requirements-dev.txt",
         "README.md",
-        "src/askd/__init__.py",
-        "src/askd/cli.py",
+        "src/askp/__init__.py",
+        "src/askp/cli.py",
     ]
     for file in required_files:
         assert Path(file).exists(), f"{file} not found"
@@ -56,7 +56,7 @@ class TestInstallation:
             text=True
         )
         assert result.returncode == 0, "Installation failed"
-        assert (tmp_path / "bin/askd").exists(), "askd not installed"
+        assert (tmp_path / "bin/askp").exists(), "askp not installed"
         assert not (tmp_path / "bin/ask").exists(), "ask symlink created"
         
     def test_install_with_symlinks(self, tmp_path):
@@ -67,6 +67,6 @@ class TestInstallation:
             text=True
         )
         assert result.returncode == 0, "Installation failed"
-        assert (tmp_path / "bin/askd").exists(), "askd not installed"
+        assert (tmp_path / "bin/askp").exists(), "askp not installed"
         assert (tmp_path / "bin/ask").exists(), "ask symlink not created"
         assert (tmp_path / "bin/askp").exists(), "askp symlink not created"

@@ -10,7 +10,7 @@ from pathlib import Path
 src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
 sys.path.insert(0, src_path)
 
-from askd.cost_tracking import analyze_costs, COST_LOG_FILE
+from askp.cost_tracking import analyze_costs, COST_LOG_FILE
 from src.backfill_cost_data import find_and_process_results, write_cost_data
 
 def test_current_stats():

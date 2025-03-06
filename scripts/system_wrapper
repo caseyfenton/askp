@@ -2,10 +2,10 @@
 set -e
 
 # Configuration
-ASKD_HOME="${HOME}/.askd"
-ASKD_ENV="${ASKD_HOME}/env"
-ASKD_CONFIG="${ASKD_HOME}/config"
-ASKD_LOGS="${ASKD_HOME}/logs"
+ASKP_HOME="${HOME}/.askp"
+ASKP_ENV="${ASKP_HOME}/env"
+ASKP_CONFIG="${ASKP_HOME}/config"
+ASKP_LOGS="${ASKP_HOME}/logs"
 VERSION="2.0.0"
 
 # Color output
@@ -20,25 +20,60 @@ info() { log "$1" "$GREEN"; }
 warn() { log "$1" "$YELLOW"; }
 error() { log "$1" "$RED"; }
 
-# Ensure ASKD home directory exists
+# Ensure ASKP home directory exists
 setup_home() {
-    mkdir -p "${ASKD_HOME}" "${ASKD_LOGS}"
-    touch "${ASKD_CONFIG}"
+    mkdir -p "${ASKP_HOME}" "${ASKP_LOGS}"
+    touch "${ASKP_CONFIG}"
 }
 
 # Create/update virtual environment
 setup_env() {
-    if [ ! -d "${ASKD_ENV}" ]; then
+    if [ ! -d "${ASKP_ENV}" ]; then
         info "Creating virtual environment..."
-        python3 -m venv "${ASKD_ENV}"
+        
+        # Choose the right Python command based on availability
+        PYTHON_CMD=""
+        if command -v python3 >/dev/null 2>&1; then
+            PYTHON_CMD="python3"
+        elif command -v python >/dev/null 2>&1; then
+            PYTHON_VER=$(python --version 2>&1 | grep -o "3\\.")
+            if [ -n "$PYTHON_VER" ]; then
+                PYTHON_CMD="python"
+            else
+                error "Python 3 is required but not found"
+                exit 1
+            fi
+        else
+            error "Python 3 is required but not found"
+            exit 1
+        fi
+        
+        # Create the virtual environment
+        $PYTHON_CMD -m venv "${ASKP_ENV}"
+        if [ $? -ne 0 ]; then
+            error "Failed to create virtual environment"
+            exit 1
+        fi
     fi
     
     # Activate environment
-    source "${ASKD_ENV}/bin/activate"
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" || "$OSTYPE" == "cygwin" ]]; then
+        # Windows activation
+        source "${ASKP_ENV}/Scripts/activate"
+    else
+        # Unix activation
+        source "${ASKP_ENV}/bin/activate"
+    fi
     
     # Update pip and install/upgrade dependencies
     pip install --quiet --upgrade pip
-    pip install --quiet --upgrade -e /Users/casey/CascadeProjects/askd
+    
+    # Find the correct project directory
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    PROJECT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
+    
+    # Install the package from the current directory
+    pip install --quiet --upgrade -e "$PROJECT_DIR"
 }
 
 # Main command execution
@@ -50,12 +85,11 @@ main() {
     # Get the command name
     CMD_NAME=$(basename "$0")
     
-    # Execute actual command
-    if [ "$1" = "--version" ]; then
-        echo "askd version ${VERSION}"
+    # Execute the appropriate command
+    if [ "$CMD_NAME" = "askp" ] || [ "$CMD_NAME" = "ask" ]; then
+        python -m askp.cli "$@"
     else
-        # All commands (ask, askp, askd) use the same CLI module
-        python -m askd.cli "$@"
+        python -m askp.cli "$@"
     fi
 }
 

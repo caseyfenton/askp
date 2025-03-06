@@ -2,19 +2,19 @@
 set -e
 
 # Configuration
-ASKD_HOME="${HOME}/.askd"
-ASKD_ENV="${ASKD_HOME}/env"
+ASKP_HOME="${HOME}/.askp"
+ASKP_ENV="${ASKP_HOME}/env"
 
 # Ensure environment is active
-source "${ASKD_ENV}/bin/activate"
+source "${ASKP_HOME}/env/bin/activate"
 
 # Execute command
 if [ "$1" = "--version" ]; then
-    echo "askd version 2.0.0"
+    echo "askp version 2.1.0"
 else
-    # Try to run askd.cli, but fall back to perplexity_cli if not available
-    if python -c "import askd.cli" &>/dev/null; then
-        python -m askd.cli "$@"
+    # Try to run askp.cli, but fall back to perplexity_cli if not available
+    if python -c "import askp.cli" &>/dev/null; then
+        python -m askp.cli "$@"
     else
         python -m perplexity_cli.cli "$@"
     fi

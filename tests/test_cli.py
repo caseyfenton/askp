@@ -1,4 +1,4 @@
-"""Tests for ASKD CLI functionality."""
+"""Tests for ASKP CLI functionality."""
 import json
 import os
 import sys
@@ -48,7 +48,7 @@ def test_cli_help(runner):
     """Test CLI help output."""
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
-    assert "ASKD – Advanced Search Knowledge Discovery CLI" in result.output
+    assert "ASKP – Ask Perplexity CLI with Multi-Query Support" in result.output
     assert "--format" in result.output
     assert "--output" in result.output
     assert "--verbose" in result.output

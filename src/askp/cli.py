@@ -406,6 +406,7 @@ def output_result(result: dict, options: dict):
             path = Path(options['output'])
             if not path.parent.exists():
                 rprint(f"[red]Error: Directory {path.parent} does not exist[/red]")
+                sys.exit(1)
             else:
                 try:
                     with open(options['output'], 'w', encoding='utf-8') as f:
@@ -413,8 +414,10 @@ def output_result(result: dict, options: dict):
                     rprint(f"[green]Output saved to {options['output']}[/green]")
                 except:
                     rprint(f"[red]Error: Permission denied writing to {options['output']}[/red]")
-        except:
-            pass
+                    sys.exit(1)
+        except Exception as e:
+            rprint(f"[red]Error writing to file: {str(e)}[/red]")
+            sys.exit(1)
     else:
         # Print to console
         if format_type == 'markdown':
