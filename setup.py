@@ -6,8 +6,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="askp",
-    version="2.1.0",  # Updated for multi-query support
-    author="Casey",
+    version="2.3.0",  # Updated with multi-query default, performance metrics, and improved output visibility
+    author="Casey Fenton",
     author_email="caseyfenton@gmail.com",
     description="ASKP – Ask Perplexity CLI for advanced search and knowledge discovery",
     long_description=long_description,
@@ -29,6 +29,7 @@ setup(
         "Programming Language :: Python :: 3.12",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
+    keywords=["perplexity", "ai", "search", "cli", "knowledge", "research", "parallel", "query expansion"],
     python_requires=">=3.8",
     install_requires=[
         "click>=8.0.0",
@@ -54,8 +55,7 @@ setup(
     entry_points={
         "console_scripts": [
             "askp=askp.cli:main",
-            # Aliases can be added if needed:
-            "ask=askp.cli:main"
+            "ask=askp.cli:main",
         ],
     },
 )

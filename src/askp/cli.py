@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ASKP – Ask Perplexity CLI with Multi-Query Support. Interface to the Perplexity API for search and knowledge discovery."""
-import os, sys, json, uuid, threading, click
+import os, sys, json, uuid, threading, click, time
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from openai import OpenAI
 from .cost_tracking import log_query_cost
-console = Console(); VERSION = "2.1.0"
+console = Console(); VERSION = "2.2.0"
 def sanitize_filename(query: str) -> str:
     safe = ''.join(c if c.isalnum() else '_' for c in query); return safe[:50] if safe.strip('_') else "query"
 def load_api_key() -> str:
@@ -81,18 +81,37 @@ def handle_multi_query(queries: list, options: dict) -> list:
     model_info = get_model_info(options.get("model", "sonar-pro"), options.get("reasoning", False), options.get("pro_reasoning", False))
     print(f"Model: {model_info['model']}{' (reasoning)' if model_info.get('reasoning', False) else ''} | Temperature: {options.get('temperature',0.7)}")
     options["suppress_model_display"] = True; results_lock = threading.Lock(); results = []; total_tokens = 0; total_cost = 0
-    with ThreadPoolExecutor(max_workers=min(10, len(queries))) as executor:
+    
+    # Track start time for queries per second calculation
+    start_time = time.time()
+    
+    max_workers = options.get("max_parallel", 10)
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(queries))) as executor:
         futures = {executor.submit(execute_query, q, i, options, results_lock): i for i, q in enumerate(queries)}
         for future in futures:
             try:
                 res = future.result(); 
                 if res: results.append(res); total_tokens += res.get("tokens", 0); total_cost += res["metadata"].get("cost", 0)
             except Exception as e: rprint(f"[red]Error in future: {e}[/red]")
+    
+    # Calculate elapsed time and queries per second
+    elapsed_time = time.time() - start_time
+    queries_per_second = len(results) / elapsed_time if elapsed_time > 0 else 0
+    
     print("\nProcessing complete!"); 
-    print(f"Results saved in directory: {get_output_dir()}"); 
+    output_dir = get_output_dir()
+    print(f"Results saved in directory: {output_dir}"); 
     print(f"Queries processed: {len(results)}/{len(queries)}"); 
     print(f"Total tokens used: {total_tokens:,}"); 
-    print(f"Total cost: ${total_cost:.4f}"); 
+    print(f"Total cost: ${total_cost:.4f}");
+    print(f"Performance: {elapsed_time:.1f}s ({queries_per_second:.2f} queries/second)");
+    
+    # Store metrics in results for use in output_multi_results
+    if results:
+        results[0]["metadata"]["queries_per_second"] = queries_per_second
+        results[0]["metadata"]["elapsed_time"] = elapsed_time
+        results[0]["metadata"]["output_dir"] = output_dir
+    
     return results
 def format_json(result: dict) -> str: return json.dumps(result, indent=2)
 def format_markdown(result: dict) -> str:
@@ -113,21 +132,43 @@ def format_text(result: dict) -> str:
         parts.extend([f"Query: {result['query']}", f"Model: {result['metadata']['model']}", f"Tokens: {result['metadata']['tokens']}", f"Cost: ${result['metadata']['cost']:.6f}\n"])
     parts.append(result["results"][0]["content"]); return "\n".join(parts)
 def output_result(result: dict, options: dict) -> None:
-    if not result: return; 
+    """Output a single query result in the specified format."""
+    if not result or options.get("quiet", False): return
+    
     fmt = options.get("format", "markdown")
-    out = format_json(result) if fmt=="json" else (format_text(result) if fmt=="text" else format_markdown(result))
-    if fmt in {"markdown","text"}:
-        model_disp = result["model"] + (" (reasoning)" if result["model_info"].get("reasoning", False) else "")
-        out += f"\n{model_disp} | {result['tokens_used']:,} tokens | ${result['metadata']['cost']:.4f}"
+    formatted = format_json(result) if fmt == "json" else (format_text(result) if fmt == "text" else format_markdown(result))
+    
+    # Add model and token information for text and markdown formats
+    if fmt in {"markdown", "text"}:
+        model_disp = result.get("model", "") + (" (reasoning)" if result.get("model_info", {}).get("reasoning", False) else "")
+        formatted += f"\n{model_disp} | {result.get('tokens_used', 0):,} tokens | ${result.get('metadata', {}).get('cost', 0):.4f}"
+    
     if options.get("output"):
         p = Path(options["output"])
-        if not p.parent.exists(): rprint(f"[red]Error: Directory {p.parent} does not exist[/red]")
+        if not p.parent.exists():
+            rprint(f"[red]Error: Directory {p.parent} does not exist[/red]")
         else:
-            try: p.write_text(out, encoding="utf-8"); rprint(f"[green]Output saved to {options['output']}[/green]")
-            except PermissionError: rprint(f"[red]Error: Permission denied writing to {options['output']}[/red]")
+            try:
+                p.write_text(formatted, encoding="utf-8")
+                rprint(f"[green]Output saved to {options['output']}[/green]")
+            except PermissionError:
+                rprint(f"[red]Error: Permission denied writing to {options['output']}[/red]")
     else:
-        if fmt=="markdown": console.print(Markdown(out))
-        else: click.echo(out)
+        if fmt == "markdown":
+            console.print(Markdown(formatted))
+        else:
+            click.echo(formatted)
+    
+    # Always show the output directory for individual results too
+    if not options.get("quiet") and fmt != "json":
+        rprint(f"[blue]Results directory: {get_output_dir()}[/blue]")
+    
+    # Show a random tip if in single query mode
+    if not options.get("quiet", False) and not options.get("multi", False):
+        from .tips import get_formatted_tip
+        tip = get_formatted_tip()
+        if tip:
+            rprint(tip)
 def output_multi_results(results: list, options: dict) -> None:
     fmt = options.get("format", "markdown")
     if fmt=="json":
@@ -137,7 +178,14 @@ def output_multi_results(results: list, options: dict) -> None:
         for i, r in enumerate(results):
             if r: out += f"## Query {i+1}: {r['query'][:50]}...\n\n" + format_markdown(r) + "\n\n" + "-"*50 + "\n\n"
         total_tokens = sum(r["tokens"] for r in results if r); total_cost = sum(r["metadata"]["cost"] for r in results if r)
+        
+        # Add queries per second and output directory to summary
+        queries_per_second = results[0]["metadata"].get("queries_per_second", 0) if results else 0
+        elapsed_time = results[0]["metadata"].get("elapsed_time", 0) if results else 0
+        output_dir = results[0]["metadata"].get("output_dir", get_output_dir()) if results else get_output_dir()
+        
         out += f"\n## Summary\n\n- Total Queries: {len(results)}\n- Total Tokens: {total_tokens:,}\n- Total Cost: ${total_cost:.4f}\n"
+        out += f"- Performance: {elapsed_time:.1f}s ({queries_per_second:.2f} queries/second)\n- Results Directory: {output_dir}\n"
     else:
         out = "=== Multiple Query Results ===\n\n"
         for i, r in enumerate(results):
@@ -159,30 +207,50 @@ def output_multi_results(results: list, options: dict) -> None:
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results")
 @click.option("--format", "-f", type=click.Choice(["text", "json", "markdown"]), default="markdown", help="Output format")
 @click.option("--output", "-o", type=click.Path(), help="Save output to file")
-@click.option("--num-results", "-n", type=int, default=5, help="Number of results to return")
+@click.option("--num-results", "-n", type=int, default=5, help="Number of results to return from Perplexity")
 @click.option("--model", default="sonar-pro", help="Model to use (default: sonar-pro)")
 @click.option("--temperature", type=float, default=0.7, help="Response creativity (default: 0.7)")
-@click.option("--max-tokens", type=int, default=8192, help="Maximum tokens in response (default: 8192)")
+@click.option("--token-max", "-t", type=int, default=8192, help="Maximum tokens in response (default: 8192)")
 @click.option("--reasoning", "-r", is_flag=True, help="Use reasoning model ($5.00 per million tokens)")
 @click.option("--pro-reasoning", is_flag=True, help="Use pro reasoning model ($8.00 per million tokens)")
-@click.option("--multi", "-m", is_flag=True, help="Process each argument as a separate query in parallel")
+@click.option("--single", "-s", is_flag=True, help="Process all arguments as a single query (default is multi-query mode)")
+@click.option("--max-parallel", "-p", type=int, default=10, help="Maximum number of parallel processes (default: 10)")
 @click.option("--file", "-i", type=click.Path(exists=True), help="File containing queries (one per line)")
 @click.option("--combine", "-c", is_flag=True, help="Combine all results into a single output")
-def cli(query_text, verbose, quiet, format, output, num_results, model, temperature, max_tokens, reasoning, pro_reasoning, multi, file, combine):
+@click.option("--expand", "-e", type=int, help="Expand queries to specified total number by generating related queries")
+def cli(query_text, verbose, quiet, format, output, num_results, model, temperature, token_max, reasoning, pro_reasoning, single, max_parallel, file, combine, expand):
     queries: list = []
     if file:
         try:
             with open(file, "r", encoding="utf-8") as f: queries.extend([line.strip() for line in f if line.strip()])
         except Exception as e: rprint(f"[red]Error reading queries file: {e}[/red]"); sys.exit(1)
     if query_text:
-        queries.extend(query_text if multi else [" ".join(query_text)])
+        queries.extend([" ".join(query_text)] if single else list(query_text))
     elif not queries and not sys.stdin.isatty():
         queries.extend([line.strip() for line in sys.stdin.read().splitlines() if line.strip()])
     if not queries:
         ctx = click.get_current_context(); click.echo(ctx.get_help()); ctx.exit()
     if reasoning and pro_reasoning:
         rprint("[red]Error: Cannot use both --reasoning and --pro-reasoning together[/red]"); sys.exit(1)
-    options = {"verbose": verbose, "quiet": quiet, "format": format, "output": output, "num_results": num_results, "model": model, "temperature": temperature, "max_tokens": max_tokens, "reasoning": reasoning, "pro_reasoning": pro_reasoning, "combine": combine}
+    
+    # Handle query expansion if requested
+    if expand and expand > len(queries):
+        if not quiet:
+            rprint(f"[blue]Expanding {len(queries)} queries to {expand} total queries...[/blue]")
+        from .expand import generate_expanded_queries
+        queries = generate_expanded_queries(
+            queries, 
+            expand, 
+            model=model, 
+            temperature=temperature
+        )
+    
+    options = {"verbose": verbose, "quiet": quiet, "format": format, "output": output, "num_results": num_results, "model": model, "temperature": temperature, "max_tokens": token_max, "reasoning": reasoning, "pro_reasoning": pro_reasoning, "combine": combine, "max_parallel": max_parallel}
+    
+    # Use multi-query mode by default unless single flag is set
+    multi = not single
+    options["multi"] = multi
+    
     if multi or file or len(queries) > 1:
         results = handle_multi_query(queries, options)
         if not results: rprint("[red]Error: Failed to process queries[/red]"); sys.exit(1)

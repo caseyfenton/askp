@@ -1,0 +1,29 @@
+include LICENSE
+include README.md
+include pyproject.toml
+include setup.py
+include MANIFEST.in
+recursive-include src *
+recursive-exclude src *.pyc
+recursive-exclude src/__pycache__ *
+recursive-exclude tests *
+recursive-exclude test_results *
+recursive-exclude scripts *
+recursive-exclude docs *
+recursive-exclude .git *
+recursive-exclude .github *
+recursive-exclude .vscode *
+recursive-exclude .idea *
+recursive-exclude __pycache__ *
+recursive-exclude *.pyc
+recursive-exclude *.pyo
+recursive-exclude *.pyd
+recursive-exclude .DS_Store
+recursive-exclude .env
+recursive-exclude venv *
+recursive-exclude env *
+recursive-exclude .venv *
+recursive-exclude .env *
+recursive-exclude dist *
+recursive-exclude build *
+recursive-exclude *.egg-info *
