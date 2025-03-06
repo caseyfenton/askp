@@ -6,6 +6,7 @@ ASKP (Ask Perplexity) is a powerful command-line interface for natural language 
 
 - Natural language queries through Perplexity API
 - Multi-query processing with parallel execution
+- Deep research mode for comprehensive topic exploration
 - Cost tracking and analytics
 - Project-aware context
 - Beautiful CLI interface
@@ -17,6 +18,7 @@ ASKP is designed specifically for developers using modern AI-powered coding tool
 
 - Run multiple parallel searches simultaneously, dramatically reducing wait times
 - Bring comprehensive research directly into your codebase
+- Generate in-depth research plans with the deep research mode
 - Integrate seamlessly with local LLM tools - once results are in your project folder, they become instantly searchable in your codebase vector store
 - Solve complex problems quickly with minimal cost (e.g., 670 searches for approximately $0.77)
 - Support not just coding tasks but also research for legal, academic, or other professional projects
@@ -67,6 +69,9 @@ askp -m "What is Python?" "What is TypeScript?" "What is Rust?"
 # Process multiple queries from a file
 askp -i queries.txt -m
 
+# Generate a comprehensive research plan with deep research mode
+askp -d "Impact of quantum computing on cryptography"
+
 # Combine multiple query results into a single output
 askp -m -c "Query 1" "Query 2" "Query 3"
 
@@ -107,6 +112,7 @@ Options:
   -i, --file PATH                 File containing queries (one per line)
   -c, --combine                   Combine all results into a single output
   -e, --expand INTEGER            Expand queries to specified total number by generating related queries
+  -d, --deep                      Generate a comprehensive research plan with detailed queries
   --help                          Show this message and exit.
 ```
 
@@ -132,6 +138,12 @@ askp -m -c -o research.md "Query 1" "Query 2" "Query 3"
 ```bash
 # Start with one query and expand to 5 total queries
 askp -e 5 "Machine learning fundamentals"
+```
+
+**TIP**: For complex research topics, use the deep research mode to generate a comprehensive research plan:
+```bash
+# Generate a detailed research plan with focused sub-queries
+askp -d "Impact of climate change on agriculture"
 ```
 
 **TIP**: Increase parallel processing capacity for large batches of queries:

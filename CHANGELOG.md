@@ -1,5 +1,15 @@
 # ASKP Changelog
 
+## 2.4.0 (2025-03-06)
+
+### Added
+- Added deep research feature with `-d/--deep` flag for comprehensive research planning
+- Implemented automatic research plan generation with topic overview and focused queries
+- Enhanced output formatting for deep research results to create a cohesive research paper
+
+### Changed
+- Updated version to 2.4.0 across all relevant files
+
 ## 2.3.0 (2025-03-06)
 
 ### Added

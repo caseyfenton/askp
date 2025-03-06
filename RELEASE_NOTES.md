@@ -31,7 +31,7 @@ Processing 5 queries in parallel...
 Model: sonar-pro | Temperature: 0.7
 
 Processing complete!
-Results saved in directory: /Users/casey/askp_results/2025-03-06_15-30-45
+Results saved in directory: ~/askp_results/2025-03-06_15-30-45
 Queries processed: 5/5
 Total tokens used: 42,500
 Total cost: $0.0425
@@ -43,7 +43,7 @@ Performance: 0.83 queries/second
 The output file location is now clearly displayed for both single and multi-query searches, making it easier to find and reference your results:
 
 ```
-Results directory: /Users/casey/askp_results/2025-03-06_15-30-45
+Results directory: ~/askp_results/2025-03-06_15-30-45
 ```
 
 In markdown output, the results directory is also included in the summary section for multi-query searches.

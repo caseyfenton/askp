@@ -34,6 +34,7 @@
 │   └── askp/
 │       ├── cli.py        # CLI interface
 │       ├── cost_tracking.py  # Cost analysis
+│       ├── deep_research.py  # Deep research planning functionality
 │       └── wizard/       # Installation wizard
 ├── tests/                # Test suite
 ├── install.sh            # Installer script

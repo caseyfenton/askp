@@ -9,6 +9,22 @@ cd askp
 
 ## Common Workflows
 
+### Basic Query
+```bash
+askp "What is the capital of France?"
+```
+
+### Multi-Query Processing
+```bash
+askp -m "Python best practices" "Python security" "Python performance"
+```
+
+### Deep Research Mode
+```bash
+# Generate a comprehensive research plan
+askp -d "Impact of quantum computing on cryptography"
+```
+
 ### Run Tests
 ```bash
 pytest tests/ -v

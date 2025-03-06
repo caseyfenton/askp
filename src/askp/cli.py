@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from openai import OpenAI
 from .cost_tracking import log_query_cost
-console = Console(); VERSION = "2.2.0"
+console = Console(); VERSION = "2.4.0"
 def sanitize_filename(query: str) -> str:
     safe = ''.join(c if c.isalnum() else '_' for c in query); return safe[:50] if safe.strip('_') else "query"
 def load_api_key() -> str:
@@ -171,25 +171,60 @@ def output_result(result: dict, options: dict) -> None:
             rprint(tip)
 def output_multi_results(results: list, options: dict) -> None:
     fmt = options.get("format", "markdown")
+    
+    # Check if this is a deep research result
+    is_deep_research = options.get("deep_research", False)
+    research_overview = options.get("research_overview", "")
+    
     if fmt=="json":
-        combined = [json.loads(format_json(r)) for r in results if r]; out = json.dumps(combined, indent=2)
+        combined = [json.loads(format_json(r)) for r in results if r]
+        # Add research overview to JSON output if in deep research mode
+        if is_deep_research:
+            combined = {"overview": research_overview, "research_results": combined}
+        out = json.dumps(combined, indent=2)
     elif fmt=="markdown":
-        out = "# Multiple Query Results\n\n"
-        for i, r in enumerate(results):
-            if r: out += f"## Query {i+1}: {r['query'][:50]}...\n\n" + format_markdown(r) + "\n\n" + "-"*50 + "\n\n"
-        total_tokens = sum(r["tokens"] for r in results if r); total_cost = sum(r["metadata"]["cost"] for r in results if r)
+        if is_deep_research:
+            # Special formatting for deep research
+            out = f"# Deep Research: {research_overview}\n\n"
+            out += f"## Research Overview\n\n{research_overview}\n\n"
+            out += "## Research Findings\n\n"
+            for i, r in enumerate(results):
+                if r: 
+                    out += f"### {i+1}. {r['query']}\n\n" + format_markdown(r) + "\n\n"
+        else:
+            # Regular multi-query output
+            out = "# Multiple Query Results\n\n"
+            for i, r in enumerate(results):
+                if r: out += f"## Query {i+1}: {r['query'][:50]}...\n\n" + format_markdown(r) + "\n\n" + "-"*50 + "\n\n"
+        
+        total_tokens = sum(r["tokens"] for r in results if r)
+        total_cost = sum(r["metadata"]["cost"] for r in results if r)
         
         # Add queries per second and output directory to summary
         queries_per_second = results[0]["metadata"].get("queries_per_second", 0) if results else 0
         elapsed_time = results[0]["metadata"].get("elapsed_time", 0) if results else 0
         output_dir = results[0]["metadata"].get("output_dir", get_output_dir()) if results else get_output_dir()
         
-        out += f"\n## Summary\n\n- Total Queries: {len(results)}\n- Total Tokens: {total_tokens:,}\n- Total Cost: ${total_cost:.4f}\n"
+        out += f"\n## Summary\n\n"
+        if is_deep_research:
+            out += f"- Research Topic: {research_overview}\n"
+        out += f"- Total Queries: {len(results)}\n- Total Tokens: {total_tokens:,}\n- Total Cost: ${total_cost:.4f}\n"
         out += f"- Performance: {elapsed_time:.1f}s ({queries_per_second:.2f} queries/second)\n- Results Directory: {output_dir}\n"
     else:
-        out = "=== Multiple Query Results ===\n\n"
-        for i, r in enumerate(results):
-            if r: out += f"--- Query {i+1}: {r['query'][:50]}... ---\n\n" + format_text(r) + "\n\n" + "-"*50 + "\n\n"
+        if is_deep_research:
+            # Special formatting for deep research in text mode
+            out = f"=== Deep Research: {research_overview} ===\n\n"
+            out += f"--- Research Overview ---\n\n{research_overview}\n\n"
+            out += "--- Research Findings ---\n\n"
+            for i, r in enumerate(results):
+                if r: 
+                    out += f"--- {i+1}. {r['query']} ---\n\n" + format_text(r) + "\n\n" + "-"*30 + "\n\n"
+        else:
+            # Regular multi-query output in text mode
+            out = "=== Multiple Query Results ===\n\n"
+            for i, r in enumerate(results):
+                if r: out += f"--- Query {i+1}: {r['query'][:50]}... ---\n\n" + format_text(r) + "\n\n" + "-"*50 + "\n\n"
+    
     if options.get("output"):
         p = Path(options["output"])
         if not p.parent.exists():
@@ -218,7 +253,8 @@ def output_multi_results(results: list, options: dict) -> None:
 @click.option("--file", "-i", type=click.Path(exists=True), help="File containing queries (one per line)")
 @click.option("--combine", "-c", is_flag=True, help="Combine all results into a single output")
 @click.option("--expand", "-e", type=int, help="Expand queries to specified total number by generating related queries")
-def cli(query_text, verbose, quiet, format, output, num_results, model, temperature, token_max, reasoning, pro_reasoning, single, max_parallel, file, combine, expand):
+@click.option("--deep", "-d", is_flag=True, help="Perform deep research by generating a comprehensive research plan")
+def cli(query_text, verbose, quiet, format, output, num_results, model, temperature, token_max, reasoning, pro_reasoning, single, max_parallel, file, combine, expand, deep):
     queries: list = []
     if file:
         try:
@@ -233,8 +269,28 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, temperat
     if reasoning and pro_reasoning:
         rprint("[red]Error: Cannot use both --reasoning and --pro-reasoning together[/red]"); sys.exit(1)
     
+    # Handle deep research if requested
+    if deep:
+        if len(queries) != 1:
+            rprint("[red]Error: Deep research requires exactly one query[/red]"); sys.exit(1)
+        if not quiet:
+            rprint(f"[blue]Generating deep research plan for: {queries[0]}[/blue]")
+        from .deep_research import generate_deep_research_plan
+        research_overview, research_queries = generate_deep_research_plan(
+            queries[0],
+            model=model,
+            temperature=temperature
+        )
+        if not quiet:
+            rprint(f"[green]Research Overview: {research_overview}[/green]")
+            rprint(f"[green]Generated {len(research_queries)} research queries[/green]")
+        # Replace the original query with the generated research queries
+        queries = research_queries
+        # Force combine mode for deep research
+        combine = True
+    
     # Handle query expansion if requested
-    if expand and expand > len(queries):
+    elif expand and expand > len(queries):
         if not quiet:
             rprint(f"[blue]Expanding {len(queries)} queries to {expand} total queries...[/blue]")
         from .expand import generate_expanded_queries
@@ -250,6 +306,11 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, temperat
     # Use multi-query mode by default unless single flag is set
     multi = not single
     options["multi"] = multi
+    
+    # For deep research, add the overview to the options
+    if deep:
+        options["deep_research"] = True
+        options["research_overview"] = research_overview
     
     if multi or file or len(queries) > 1:
         results = handle_multi_query(queries, options)
