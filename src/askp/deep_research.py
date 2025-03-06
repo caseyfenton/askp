@@ -1,29 +1,67 @@
 #!/usr/bin/env python3
-"""Deep research module for ASKP CLI."""
+"""
+Deep research module for ASKP CLI.
+
+This module provides functionality for generating comprehensive research plans
+and expanding a single query into multiple focused research queries. It uses
+the Perplexity API to generate structured research plans that can be used
+to create in-depth research documents.
+
+Example:
+    ```python
+    from askp.deep_research import generate_research_plan, create_research_queries
+    
+    # Generate a research plan
+    plan = generate_research_plan("Impact of quantum computing on cryptography")
+    
+    # Create specific research queries from the plan
+    queries = create_research_queries("Impact of quantum computing on cryptography")
+    ```
+"""
 
 import json
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from openai import OpenAI
 from rich import print as rprint
 
 from .cli import load_api_key
 
 
-def generate_deep_research_plan(
+def generate_research_plan(
     query: str,
     model: str = "sonar-pro",
     temperature: float = 0.7
-) -> Tuple[str, List[str]]:
+) -> Dict[str, Any]:
     """
-    Generate a deep research plan based on the original query.
+    Generate a comprehensive research plan based on the original query.
+    
+    This function calls the Perplexity API to create a structured research plan
+    with an overview and multiple research sections. The plan is designed to
+    cover different aspects of the topic for thorough exploration.
     
     Args:
-        query: Original research query
-        model: Model to use for generating the research plan
-        temperature: Temperature for plan generation
+        query: Original research query or topic
+        model: Perplexity model to use for generating the research plan
+        temperature: Temperature for controlling response creativity (0.0-1.0)
         
     Returns:
-        Tuple containing (research_overview, list_of_research_queries)
+        Dictionary containing the research plan with the following structure:
+        {
+            "research_overview": "Overview of the research topic",
+            "research_sections": [
+                {"title": "Section 1", "description": "Description of section 1"},
+                {"title": "Section 2", "description": "Description of section 2"},
+                ...
+            ]
+        }
+        
+    Example:
+        ```python
+        plan = generate_research_plan("Impact of quantum computing on cryptography")
+        print(plan["research_overview"])
+        for section in plan["research_sections"]:
+            print(f"- {section['title']}")
+        ```
     """
     try:
         # Load API key
@@ -31,7 +69,7 @@ def generate_deep_research_plan(
         client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
         
         # Create the prompt for generating the research plan
-        prompt = _create_deep_research_prompt(query)
+        prompt = _create_research_prompt(query)
         
         # Make API call
         response = client.chat.completions.create(
@@ -51,61 +89,96 @@ def generate_deep_research_plan(
             if json_start >= 0 and json_end > json_start:
                 json_str = content[json_start:json_end]
                 result = json.loads(json_str)
-                overview = result.get("overview", "")
-                research_queries = result.get("research_queries", [])
-            else:
-                # Fallback: try to parse lines that look like queries
-                lines = content.split('\n')
-                overview = query  # Default overview is the original query
-                research_queries = []
                 
-                # Look for a line that might be the overview
-                for i, line in enumerate(lines):
-                    if "overview" in line.lower() or "research plan" in line.lower():
-                        if i+1 < len(lines) and lines[i+1].strip():
-                            overview = lines[i+1].strip()
-                            break
+                # Create standardized output format
+                research_plan = {
+                    "research_overview": result.get("overview", query),
+                    "research_sections": []
+                }
                 
-                # Extract queries
-                for line in lines:
-                    line = line.strip()
-                    if line and (line.startswith('"') or line.startswith('-') or line.startswith('*')):
-                        # Clean up the line
-                        research_query = line.lstrip('-*"\' ').rstrip('",\' ')
-                        if research_query and len(research_query) > 10:  # Minimum length to filter out noise
-                            research_queries.append(research_query)
+                # Process research queries into sections
+                for i, research_query in enumerate(result.get("research_queries", [])):
+                    if isinstance(research_query, str) and research_query.strip():
+                        research_plan["research_sections"].append({
+                            "title": f"Section {i+1}: {research_query.strip()}",
+                            "description": research_query.strip()
+                        })
+                
+                if research_plan["research_sections"]:
+                    rprint(f"[green]Generated research plan with {len(research_plan['research_sections'])} sections.[/green]")
+                    return research_plan
             
-            # Validate and clean up research queries
-            valid_research_queries = []
-            for research_query in research_queries:
-                if isinstance(research_query, str) and research_query.strip():
-                    valid_research_queries.append(research_query.strip())
-            
-            if valid_research_queries:
-                rprint(f"[green]Generated research plan with {len(valid_research_queries)} research queries.[/green]")
-                return overview, valid_research_queries
-            else:
-                rprint("[yellow]Warning: Could not generate research queries. Using original query.[/yellow]")
-                return query, [query]
+            # Fallback: create a basic plan from the original query
+            rprint("[yellow]Warning: Could not parse research plan as JSON. Creating basic plan.[/yellow]")
+            return {
+                "research_overview": query,
+                "research_sections": [{"title": query, "description": query}]
+            }
             
         except json.JSONDecodeError:
-            rprint("[yellow]Warning: Could not parse deep research response as JSON. Using original query.[/yellow]")
-            return query, [query]
+            rprint("[yellow]Warning: Could not parse research plan response as JSON. Creating basic plan.[/yellow]")
+            return {
+                "research_overview": query,
+                "research_sections": [{"title": query, "description": query}]
+            }
             
     except Exception as e:
-        rprint(f"[yellow]Warning: Failed to generate deep research plan: {e}. Using original query.[/yellow]")
-        return query, [query]
+        rprint(f"[yellow]Warning: Failed to generate research plan: {e}. Creating basic plan.[/yellow]")
+        return {
+            "research_overview": query,
+            "research_sections": [{"title": query, "description": query}]
+        }
 
 
-def _create_deep_research_prompt(query: str) -> str:
+def create_research_queries(
+    query: str,
+    model: str = "sonar-pro",
+    temperature: float = 0.7
+) -> List[str]:
     """
-    Create a prompt for generating a deep research plan.
+    Create a list of focused research queries based on the original query.
+    
+    This function generates a research plan and then converts it into a list
+    of specific research queries that can be used with the ASKP CLI.
     
     Args:
-        query: Original research query
+        query: Original research query or topic
+        model: Perplexity model to use for generating the research queries
+        temperature: Temperature for controlling response creativity (0.0-1.0)
         
     Returns:
-        Prompt string
+        List of research queries, including the original query as the first item
+        
+    Example:
+        ```python
+        queries = create_research_queries("Impact of quantum computing on cryptography")
+        for i, q in enumerate(queries):
+            print(f"{i+1}. {q}")
+        ```
+    """
+    # Generate the research plan
+    research_plan = generate_research_plan(query, model, temperature)
+    
+    # Extract queries from the research plan
+    queries = [query]  # Start with the original query
+    
+    for section in research_plan["research_sections"]:
+        section_query = section["description"]
+        if section_query and section_query != query:
+            queries.append(section_query)
+    
+    return queries
+
+
+def _create_research_prompt(query: str) -> str:
+    """
+    Create a prompt for generating a comprehensive research plan.
+    
+    Args:
+        query: Original research query or topic
+        
+    Returns:
+        Formatted prompt string for the Perplexity API
     """
     prompt = f"""The user would like to perform deep research on the following topic:
 

@@ -269,25 +269,22 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, temperat
     if reasoning and pro_reasoning:
         rprint("[red]Error: Cannot use both --reasoning and --pro-reasoning together[/red]"); sys.exit(1)
     
-    # Handle deep research if requested
+    # Handle deep research mode
     if deep:
-        if len(queries) != 1:
-            rprint("[red]Error: Deep research requires exactly one query[/red]"); sys.exit(1)
-        if not quiet:
-            rprint(f"[blue]Generating deep research plan for: {queries[0]}[/blue]")
-        from .deep_research import generate_deep_research_plan
-        research_overview, research_queries = generate_deep_research_plan(
-            queries[0],
+        if verbose: rprint("[blue]Deep research mode enabled. Generating research plan...[/blue]")
+        from .deep_research import create_research_queries
+        research_queries = create_research_queries(
+            query=query_text,
             model=model,
             temperature=temperature
         )
-        if not quiet:
-            rprint(f"[green]Research Overview: {research_overview}[/green]")
-            rprint(f"[green]Generated {len(research_queries)} research queries[/green]")
-        # Replace the original query with the generated research queries
-        queries = research_queries
-        # Force combine mode for deep research
-        combine = True
+        if verbose: rprint(f"[green]Generated {len(research_queries)} research queries.[/green]")
+        
+        # Process the research queries in multi-query mode
+        options = {"verbose": verbose, "quiet": quiet, "format": format, "output": output, "num_results": num_results, "model": model, "temperature": temperature, "max_tokens": token_max, "reasoning": reasoning, "pro_reasoning": pro_reasoning, "combine": combine, "max_parallel": max_parallel, "deep_research": True, "research_overview": query_text}
+        results = handle_multi_query(research_queries, options)
+        if not results: rprint("[red]Error: Failed to process queries[/red]"); sys.exit(1)
+        output_multi_results(results, options)
     
     # Handle query expansion if requested
     elif expand and expand > len(queries):
@@ -306,11 +303,6 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, temperat
     # Use multi-query mode by default unless single flag is set
     multi = not single
     options["multi"] = multi
-    
-    # For deep research, add the overview to the options
-    if deep:
-        options["deep_research"] = True
-        options["research_overview"] = research_overview
     
     if multi or file or len(queries) > 1:
         results = handle_multi_query(queries, options)
