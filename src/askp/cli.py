@@ -10,7 +10,7 @@ from rich.markdown import Markdown
 from openai import OpenAI
 from .cost_tracking import log_query_cost
 import re
-console = Console(); VERSION = "2.4.0"
+console = Console(); VERSION = "2.4.1"
 def sanitize_filename(query: str) -> str:
     safe = ''.join(c if c.isalnum() else '_' for c in query); return safe[:50] if safe.strip('_') else "query"
 def load_api_key() -> str:
