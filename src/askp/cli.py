@@ -500,33 +500,35 @@ def output_multi_results(results: list, options: dict) -> None:
         trash_dir = os.path.join(output_dir, ".trash")
         os.makedirs(trash_dir, exist_ok=True)
         
-        # Get all component files used in deep research
-        component_files = []
-        for r in results:
-            if r and "metadata" in r and "file_path" in r.get("metadata", {}):
-                component_files.append(r["metadata"]["file_path"])
-        
-        # Move component files to trash
-        if component_files:
+        # Check if components directory exists and has files
+        components_dir = os.path.join(output_dir, "components")
+        if os.path.exists(components_dir):
             # Create a timestamped directory in trash
             trash_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             trash_session_dir = os.path.join(trash_dir, f"deep_research_{trash_timestamp}")
             os.makedirs(trash_session_dir, exist_ok=True)
             
+            # Get all files in the components directory
+            component_files = []
+            for filename in os.listdir(components_dir):
+                file_path = os.path.join(components_dir, filename)
+                if os.path.isfile(file_path):
+                    component_files.append(file_path)
+            
+            # Move component files to trash
             moved_count = 0
             for file_path in component_files:
-                if os.path.exists(file_path):
-                    try:
-                        # Get just the filename
-                        filename = os.path.basename(file_path)
-                        # Move file to trash
-                        shutil.move(file_path, os.path.join(trash_session_dir, filename))
-                        moved_count += 1
-                    except Exception as e:
-                        if not options.get("quiet", False):
-                            rprint(f"[yellow]Warning: Could not move {file_path} to trash: {e}[/yellow]")
+                try:
+                    # Get just the filename
+                    filename = os.path.basename(file_path)
+                    # Move file to trash
+                    shutil.move(file_path, os.path.join(trash_session_dir, filename))
+                    moved_count += 1
+                except Exception as e:
+                    if not options.get("quiet", False):
+                        rprint(f"[yellow]Warning: Could not move {file_path} to trash: {e}[/yellow]")
             
-            if not options.get("quiet", False):
+            if not options.get("quiet", False) and moved_count > 0:
                 rprint(f"[green]Moved {moved_count} component files to trash: {trash_session_dir}[/green]")
 @click.command()
 @click.version_option(version=VERSION, prog_name="askp")
