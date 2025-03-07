@@ -5,10 +5,21 @@ from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from rich import print as rprint
 from .cli import load_api_key
+
 def generate_research_plan(query, options=None):
     if options is None: options = {}
     model = options.get("model", "sonar-pro"); temp = options.get("temperature", 0.7)
-    prompt = f"""Create a comprehensive research plan to answer: "{query}" Provide 8-12 research areas and for each a specific search query. Format your response as JSON: {{"research_areas": [{{"title": "Area title", "query": "Specific search query"}}]}}"""
+    
+    # Get the desired number of research areas from options
+    # Default to 8-12 if not specified
+    num_areas = options.get("expand", 0)
+    if num_areas <= 0:
+        area_range = "8-12"
+    else:
+        area_range = str(num_areas)
+    
+    prompt = f"""Create a comprehensive research plan to answer: "{query}" Provide {area_range} research areas and for each a specific search query. Format your response as JSON: {{"research_areas": [{{"title": "Area title", "query": "Specific search query"}}]}}"""
+    
     from .cli import search_perplexity
     plan_result = search_perplexity(prompt, {"model": model, "temperature": temp})
     try:
@@ -17,14 +28,21 @@ def generate_research_plan(query, options=None):
         m = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
         json_str = m.group(1) if m else (re.search(r'({.*})', content, re.DOTALL).group(1) if re.search(r'({.*})', content, re.DOTALL) else content)
         data = json.loads(json_str); areas = data.get("research_areas", [])
+        
+        # Limit the number of queries if expand parameter is set
+        if num_areas > 0 and len(areas) > num_areas:
+            areas = areas[:num_areas]
+            
         queries = [a.get("query", "") for a in areas if a.get("query", "")]
         if not options.get("quiet", False): print(f"Generated plan with {len(areas)} sections and {len(queries)} queries.")
         return queries
     except Exception as e:
         print(f"Error generating research plan: {e}"); return None
+
 def create_research_queries(query, options=None):
     q = generate_research_plan(query, options)
     return q if q else [query]
+
 def process_research_plan(queries, options):
     if not queries: return None
     if "components_dir" in options:
@@ -53,6 +71,7 @@ def process_research_plan(queries, options):
                            "content": f"# {options.get('query','Deep Research')}\n\n## Introduction\n\nResearch on: {options.get('query','Deep Research')}\n\n## Conclusion\n\nFurther investigation is recommended.",
                            "model": options.get("model", "sonar-pro"), "tokens": 0, "cost": 0, "num_results": 1, "verbose": options.get("verbose", True)})
     return results
+
 def synthesize_research(query: str, results: List[Dict[str, Any]], options: Dict[str, Any]=None) -> Dict[str, str]:
     if options is None: options = {}
     model = options.get("model", "sonar-pro"); temp = options.get("temperature", 0.7)
@@ -81,6 +100,7 @@ def synthesize_research(query: str, results: List[Dict[str, Any]], options: Dict
     except Exception as e:
         rprint(f"[yellow]Warning: {e}. Creating basic synthesis.[/yellow]")
         return {"query": f"Research Synthesis: {query}", "content": f"# {query}\n\n## Introduction\n\nResearch on: {query}\n\n## Conclusion\n\nFurther investigation is recommended.", "model": model, "tokens": 0, "cost": 0, "num_results": 1, "verbose": options.get("verbose", True)}
+
 def apply_synthesis(results: Dict[str, str], synthesis: Dict[str, str]) -> Dict[str, str]:
     final = results.copy(); final["introduction"] = synthesis.get("introduction", ""); final["conclusion"] = synthesis.get("conclusion", "")
     for edit in synthesis.get("suggested_edits", []):
@@ -88,6 +108,7 @@ def apply_synthesis(results: Dict[str, str], synthesis: Dict[str, str]) -> Dict[
         if sec in final and orig in final[sec]:
             final[sec] = final[sec].replace(orig, repl)
     return final
+
 def _create_synthesis_prompt(query: str, results: Dict[str, str]) -> str:
     condensed = {title: (content[:500] + "..." + content[-500:] if len(content)>1000 else content) for title, content in results.items()}
     res_text = "".join(f"## {t}\n\n{c}\n\n" for t, c in condensed.items())

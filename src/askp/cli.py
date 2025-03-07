@@ -263,6 +263,8 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, temperat
     if not queries:
         click.echo(ctx.get_help()); ctx.exit()
     opts = {"verbose":verbose, "quiet":quiet, "format":format, "output":output, "num_results":num_results, "model":model, "temperature":temperature, "max_tokens":token_max, "reasoning":reasoning, "pro_reasoning":pro_reasoning, "combine":combine, "max_parallel":max_parallel, "token_max_set_explicitly":token_max_set, "reasoning_set_explicitly":reasoning_set, "output_dir":get_output_dir(), "multi":not single, "cleanup_component_files":cleanup_component_files}
+    if expand:
+        opts["expand"] = expand
     if deep:
         if not quiet: rprint("[blue]Deep research mode enabled. Generating research plan...[/blue]")
         if not reasoning_set: opts["model"] = "sonar-pro"
