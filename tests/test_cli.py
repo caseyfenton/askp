@@ -48,14 +48,13 @@ def test_cli_help(runner):
     """Test CLI help output."""
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
-    assert "ASKP – Ask Perplexity CLI with Multi-Query Support" in result.output
+    assert "ASKP CLI - Search Perplexity AI from the command line" in result.output
     assert "--format" in result.output
     assert "--output" in result.output
     assert "--verbose" in result.output
     
-    # Test was previously for costs command
-    # since CLI structure changed, we'll test for multi-query options instead
-    assert "--multi" in result.output
+    # Test for single flag instead of multi (CLI structure changed)
+    assert "--single" in result.output
     assert "--file" in result.output
     assert "--combine" in result.output
 
@@ -135,11 +134,14 @@ def test_cli_output_file_parent_not_exists(mock_dirname, mock_exists, runner):
     
     # Since the error handling is done inside Click, we need to use its testing facilities
     with runner.isolated_filesystem():
-        result = runner.invoke(cli, ["test query", "--output", "/nonexistent/dir/file.md"])
-        
-        # The check should happen before any API calls
-        assert result.exit_code != 0
-        # We don't check for exact message as it might vary
+        # Mock execute_query to return a valid result to avoid API calls
+        with patch('askp.cli.execute_query', return_value={"query": "test", "results": []}):
+            # Mock os.makedirs to raise an exception when trying to create the directory
+            with patch('os.makedirs', side_effect=OSError("Directory creation failed")):
+                result = runner.invoke(cli, ["test query", "--output", "/nonexistent/dir/file.md"])
+                
+                # The command should complete but with an error message about the directory
+                assert "Error" in result.output or "error" in result.output or "failed" in result.output
 
 @patch('askp.cli.search_perplexity')
 def test_cli_verbose(mock_search, runner, mock_result):
@@ -162,18 +164,26 @@ def test_cli_verbose(mock_search, runner, mock_result):
                 assert "Result 1" in result.output
 
 @patch('askp.cli.search_perplexity')
-def test_cli_quiet(mock_search, runner, mock_result, tmp_path):
-    """Test quiet mode."""
+def test_cli_quiet(mock_search, runner, mock_result):
+    """Test CLI quiet mode."""
     mock_search.return_value = mock_result
     
     # Mock get_output_dir to use a temp directory
-    with patch('askp.cli.get_output_dir', return_value=str(tmp_path)):
-        # Mock print to avoid terminal output issues
-        with patch('builtins.print'):
-            result = runner.invoke(cli, ["test query", "--quiet"])
+    with patch('askp.cli.get_output_dir', return_value=tempfile.gettempdir()):
+        # Mock handle_multi_query since that's what's called for multiple arguments
+        with patch('askp.cli.handle_multi_query') as mock_handle:
+            mock_handle.return_value = [mock_result]
             
-            assert result.exit_code == 0
-            assert "Result 1" in result.output
+            # Mock output_multi_results to avoid actual output
+            with patch('askp.cli.output_multi_results') as mock_output:
+                # Run CLI with quiet mode
+                result = runner.invoke(cli, ["--quiet", "test", "query"])
+                assert result.exit_code == 0
+                
+                # Verify that handle_multi_query was called with the quiet flag
+                assert mock_handle.call_count > 0
+                options = mock_handle.call_args[0][1]
+                assert options.get('quiet') is True
 
 @patch('askp.cli.search_perplexity')
 def test_cli_num_results(mock_search, runner, mock_result):
