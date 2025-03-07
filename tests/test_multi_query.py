@@ -11,8 +11,8 @@ from unittest.mock import patch, MagicMock
 import pytest
 from click.testing import CliRunner
 from askp.cli import (
-    cli, handle_multi_query, process_query, 
-    output_multi_results, handle_query
+    cli, handle_multi_query, execute_query, 
+    output_multi_results
 )
 
 @pytest.fixture
@@ -45,18 +45,32 @@ def mock_result():
         }
     }
 
-@patch('askp.cli.handle_query')
-def test_cli_multi_flag(mock_handle_query, runner):
-    """Test CLI with --multi flag."""
-    mock_handle_query.return_value = {
-        'query': 'test', 
-        'results': [{'content': 'content'}],
-        'metadata': {'verbose': False}
-    }
+@patch('askp.cli.execute_query')
+@patch('askp.cli.handle_multi_query')
+def test_cli_multi_flag(mock_handle_multi, mock_execute_query, runner):
+    """Test CLI with multi-query mode (default)."""
+    mock_handle_multi.return_value = [
+        {
+            'query': 'query1', 
+            'results': [{'content': 'content1'}],
+            'metadata': {'verbose': False}
+        },
+        {
+            'query': 'query2', 
+            'results': [{'content': 'content2'}],
+            'metadata': {'verbose': False}
+        }
+    ]
     
-    result = runner.invoke(cli, ["-m", "query1", "query2"])
+    # The default is multi-query mode, so we don't need a special flag
+    result = runner.invoke(cli, ["query1", "query2"])
     assert result.exit_code == 0
-    assert mock_handle_query.call_count == 0  # Should use handle_multi_query instead
+    
+    # handle_multi_query should be called, not execute_query directly from CLI
+    assert mock_handle_multi.call_count == 1
+    
+    # But execute_query is called from within handle_multi_query
+    # We're not testing that here as it's covered by test_handle_multi_query
 
 @patch('askp.cli.handle_multi_query')
 def test_cli_file_input(mock_handle_multi, runner, tmp_path):
@@ -94,7 +108,7 @@ def test_cli_file_input(mock_handle_multi, runner, tmp_path):
 
 @patch('askp.cli.search_perplexity')
 def test_process_query(mock_search):
-    """Test process_query function."""
+    """Test execute_query function."""
     mock_search.return_value = {
         'query': 'test', 
         'results': [{'content': 'content'}],
@@ -110,11 +124,11 @@ def test_process_query(mock_search):
         }
     }
     
-    result = process_query("test query", 0, {}, MagicMock())
+    result = execute_query("test query", 0, {}, MagicMock())
     assert result is not None
     mock_search.assert_called_once_with("test query", {})
 
-@patch('askp.cli.process_query')
+@patch('askp.cli.execute_query')
 def test_handle_multi_query(mock_process):
     """Test handle_multi_query function."""
     mock_result = {
@@ -129,3 +143,44 @@ def test_handle_multi_query(mock_process):
     results = handle_multi_query(["query1", "query2", "query3"], {})
     assert len(results) == 3
     assert mock_process.call_count == 3
+
+@patch('askp.cli.execute_query')
+@patch('askp.cli.get_output_dir')
+@patch('builtins.print')
+def test_handle_multi_query_deep_research(mock_print, mock_get_output_dir, mock_process):
+    """Test handle_multi_query function with deep research mode."""
+    mock_result = {
+        'query': 'test', 
+        'results': [{'content': 'content'}],
+        'metadata': {'verbose': False, 'cost': 0.001},
+        'tokens': 100,
+        'tokens_used': 100
+    }
+    mock_process.return_value = mock_result
+    mock_get_output_dir.return_value = "/test/output/dir"
+    
+    # Reset mock_print to clear any previous calls
+    mock_print.reset_mock()
+    
+    # Test with deep research mode enabled
+    results = handle_multi_query(["query1", "query2", "query3"], {"deep": True})
+    assert len(results) == 3
+    assert mock_process.call_count == 3
+    
+    # Verify that summary output (total cost/tokens) is not printed in deep research mode
+    # But we still expect some initial messages
+    summary_calls = [call for call in mock_print.call_args_list if "Totals |" in str(call)]
+    assert len(summary_calls) == 0
+    
+    # Reset mocks
+    mock_print.reset_mock()
+    mock_process.reset_mock()
+    
+    # Test with deep research mode disabled
+    results = handle_multi_query(["query1", "query2", "query3"], {"deep": False})
+    assert len(results) == 3
+    assert mock_process.call_count == 3
+    
+    # Verify that summary output is printed when not in deep research mode
+    summary_calls = [call for call in mock_print.call_args_list if "Totals |" in str(call)]
+    assert len(summary_calls) > 0

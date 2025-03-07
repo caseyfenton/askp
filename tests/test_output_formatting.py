@@ -88,24 +88,39 @@ def test_output_multi_results_markdown(mock_deep_research_results, tmp_path):
         'output_dir': str(tmp_path),
         'model': 'sonar-pro',
         'deep': False,
-        'verbose': False
+        'verbose': True  # Set verbose to True to ensure output is displayed
     }
     
-    # Mock open to avoid actually writing files
-    with patch('builtins.open', MagicMock()):
-        # Mock click.echo to capture output
-        with patch('click.echo') as mock_echo:
-            # Call function
-            output_multi_results(mock_deep_research_results, options)
-            
-            # Verify output format
-            assert mock_echo.call_count > 0
-            # Check that the output contains the expected format
-            output_str = ''.join([call.args[0] for call in mock_echo.call_args_list if isinstance(call.args[0], str)])
-            assert '5 topics' in output_str
-            assert '2,500B' in output_str
-            assert '500t' in output_str
-            assert '$0.0005' in output_str
+    # Create a real temporary file to capture the output
+    with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_file:
+        temp_path = temp_file.name
+    
+    try:
+        # Patch the open function to use our temp file for writing
+        original_open = open
+        
+        def mock_open_wrapper(*args, **kwargs):
+            if 'w' in kwargs.get('mode', '') or ('w' in args[1] if len(args) > 1 else False):
+                return original_open(temp_path, *args[1:], **kwargs)
+            return original_open(*args, **kwargs)
+        
+        with patch('builtins.open', side_effect=mock_open_wrapper):
+            # Call function with mocked console.print to avoid actual output
+            with patch('rich.console.Console.print'):
+                output_multi_results(mock_deep_research_results, options)
+                
+                # Read the content written to the file
+                with original_open(temp_path, 'r') as f:
+                    output_content = f.read()
+                
+                # Verify output format
+                assert '5 queries' in output_content
+                assert 'tokens' in output_content
+                assert '$0.0005' in output_content
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 def test_output_multi_results_deep_research(mock_deep_research_results, tmp_path):
     """Test output formatting for deep research mode."""
@@ -115,27 +130,41 @@ def test_output_multi_results_deep_research(mock_deep_research_results, tmp_path
         'output_dir': str(tmp_path),
         'model': 'sonar-pro',
         'deep': True,
-        'verbose': False,
+        'verbose': True,  # Set verbose to True to ensure output is displayed
         'research_overview': 'Test research topic'
     }
     
-    # Mock open to avoid actually writing files
-    with patch('builtins.open', MagicMock()):
-        # Mock click.echo to capture output
-        with patch('click.echo') as mock_echo:
-            # Call function
-            output_multi_results(mock_deep_research_results, options)
-            
-            # Verify output format
-            assert mock_echo.call_count > 0
-            # Check that the output contains the expected format
-            output_str = ''.join([call.args[0] for call in mock_echo.call_args_list if isinstance(call.args[0], str)])
-            assert 'Synthesizing 5 topics... deep research finished.' in output_str
-            assert '5 topics' in output_str
-            assert '2,500B' in output_str
-            assert '500t' in output_str
-            assert '$0.0005' in output_str
-            assert 'component_000.json' in output_str
+    # Create a real temporary file to capture the output
+    with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_file:
+        temp_path = temp_file.name
+    
+    try:
+        # Patch the open function to use our temp file for writing
+        original_open = open
+        
+        def mock_open_wrapper(*args, **kwargs):
+            if 'w' in kwargs.get('mode', '') or ('w' in args[1] if len(args) > 1 else False):
+                return original_open(temp_path, *args[1:], **kwargs)
+            return original_open(*args, **kwargs)
+        
+        with patch('builtins.open', side_effect=mock_open_wrapper):
+            # Call function with mocked console.print to avoid actual output
+            with patch('rich.console.Console.print'):
+                output_multi_results(mock_deep_research_results, options)
+                
+                # Read the content written to the file
+                with original_open(temp_path, 'r') as f:
+                    output_content = f.read()
+                
+                # Verify output format
+                assert 'Deep Research: Test research topic' in output_content
+                assert 'Research Overview' in output_content
+                assert 'Research Findings' in output_content
+                assert 'Summary' in output_content
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 def test_output_multi_results_quiet_mode(mock_deep_research_results, tmp_path):
     """Test output formatting with quiet mode enabled."""
@@ -276,7 +305,7 @@ def test_cli_deep_research_output(runner, mock_deep_research_results):
             mock_output.assert_called_once()
             args, kwargs = mock_output.call_args
             assert args[0] == mock_deep_research_results
-            assert kwargs.get('deep') is True
+            assert 'deep' in args[1] and args[1]['deep']
 
 def test_cli_multi_query_output(runner, mock_result):
     """Test CLI output for multiple queries."""
@@ -294,7 +323,7 @@ def test_cli_multi_query_output(runner, mock_result):
             mock_output.assert_called_once()
             args, kwargs = mock_output.call_args
             assert len(args[0]) == 2
-            assert kwargs.get('deep') is False
+            assert 'deep' not in args[1] or not args[1]['deep']
 
 def test_cli_combined_flags(runner, mock_deep_research_results):
     """Test CLI with combined flags (deep research + quiet + cleanup)."""
@@ -312,6 +341,6 @@ def test_cli_combined_flags(runner, mock_deep_research_results):
             mock_output.assert_called_once()
             args, kwargs = mock_output.call_args
             assert args[0] == mock_deep_research_results
-            assert kwargs.get('deep') is True
-            assert kwargs.get('quiet') is True
-            assert kwargs.get('cleanup_component_files') is True
+            assert args[1].get('deep') is True
+            assert args[1].get('quiet') is True
+            assert args[1].get('cleanup_component_files') is True

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Cost tracking module for ASKP CLI."""
-import os, json, random
+import os, json, random, re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -12,6 +12,10 @@ from .utils import detect_model
 
 COST_LOG_DIR = os.path.expanduser("~/.askp/cost_logs")
 COST_LOG_FILE = os.path.join(COST_LOG_DIR, "costs.jsonl")
+
+# Project detection constants
+PROJECT_ROOTS = {"projects", "cascadeprojects", "workspace", "repos", "code"}
+NON_PROJECT_DIRS = {"src", "results", "temp", "logs", "data", "tests", "perplexity", "ask", "askd", "askp", "old"}
 
 def ensure_log_dir():
     Path(COST_LOG_DIR).mkdir(parents=True, exist_ok=True)
@@ -30,6 +34,56 @@ def format_number(n: float, precision: Optional[int] = None) -> str:
     if isinstance(n, int): return f"{n:,}"
     if precision is None: precision = 2 if n >= 1 else (3 if n >= 0.1 else 4)
     return f"{n:,.{precision}f}"
+
+def estimate_token_count(content: str) -> int:
+    """Estimate the number of tokens in a string based on character count and code symbols."""
+    code_chars = len(re.findall(r"[{}()\[\]<>+=\-*/\\|;:~`@#$%^&]", content))
+    total_chars = len(content)
+    ratio = code_chars / total_chars if total_chars else 0
+    tokens = int(total_chars / (3.5 if ratio > 0.05 else 4.0)) + code_chars
+    return max(1, tokens)
+
+def get_project_from_path(path: str) -> Optional[str]:
+    """Attempt to determine project name from a file path."""
+    p = Path(path).resolve()
+    
+    # Look for a .working_directory marker in the current directory or parents
+    wd_marker = p / ".working_directory" if p.is_dir() else None
+    if wd_marker and wd_marker.exists():
+        try:
+            return wd_marker.read_text().strip()
+        except Exception:
+            pass
+            
+    for parent in p.parents:
+        wd_marker = parent / ".working_directory"
+        if wd_marker.exists():
+            try:
+                return wd_marker.read_text().strip()
+            except Exception:
+                pass
+                
+    parts = p.parts
+    # Check common project roots
+    for i, part in enumerate(parts):
+        if part.lower() in PROJECT_ROOTS and i + 1 < len(parts):
+            if parts[i + 1].lower() not in NON_PROJECT_DIRS:
+                return parts[i + 1]
+                
+    # Check for src/project_name pattern
+    try:
+        src_idx = parts.index("src")
+        if src_idx > 0:
+            return parts[src_idx - 1]
+    except ValueError:
+        pass
+        
+    # Check for results directory pattern
+    for i, part in enumerate(parts):
+        if "results" in part.lower() and i > 0 and parts[i - 1].lower() not in NON_PROJECT_DIRS:
+            return parts[i - 1]
+            
+    return None
 
 def format_date(date: datetime) -> str:
     return date.strftime("%b %d %Y")
