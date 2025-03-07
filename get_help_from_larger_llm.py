@@ -400,32 +400,52 @@ def restore_files(files_dict: Dict[str, str], dry_run: bool = False) -> List[str
     
     return restored_files
 
-def concatenate_command(custom_files: List[str] = None) -> None:
+def concatenate_command(custom_files: List[str] = None, doc_files_list: List[str] = None) -> None:
     """Command to concatenate files and copy to clipboard.
     
     Args:
-        custom_files: Optional list of specific files to include (overrides defaults)
+        custom_files: Optional list of specific code files to include (overrides defaults)
+        doc_files_list: Optional list of documentation/context files to include (overrides defaults)
     """
-    if custom_files:
-        # Use custom file list instead of scanning directories
+    if custom_files or doc_files_list:
+        # Use custom file lists instead of scanning directories
         py_files = []
         doc_files = []
         
-        for file_path in custom_files:
-            # Handle both relative and absolute paths
-            if os.path.isabs(file_path):
-                absolute_path = file_path
-            else:
-                absolute_path = os.path.join(PROJECT_ROOT, file_path)
+        if custom_files:
+            for file_path in custom_files:
+                # Handle both relative and absolute paths
+                if os.path.isabs(file_path):
+                    absolute_path = file_path
+                else:
+                    absolute_path = os.path.join(PROJECT_ROOT, file_path)
+                    
+                if not os.path.exists(absolute_path):
+                    print(f"Warning: File not found: {file_path}")
+                    continue
+                    
+                if file_path.endswith('.py'):
+                    py_files.append(absolute_path)
+                else:
+                    # Non-Python files in code-files should still be treated as code files
+                    py_files.append(absolute_path)
+        
+        if doc_files_list:
+            for file_path in doc_files_list:
+                # Handle both relative and absolute paths
+                if os.path.isabs(file_path):
+                    absolute_path = file_path
+                else:
+                    absolute_path = os.path.join(PROJECT_ROOT, file_path)
+                    
+                if not os.path.exists(absolute_path):
+                    print(f"Warning: Documentation file not found: {file_path}")
+                    continue
                 
-            if not os.path.exists(absolute_path):
-                print(f"Warning: File not found: {file_path}")
-                continue
-                
-            if file_path.endswith('.py'):
-                py_files.append(absolute_path)
-            else:
                 doc_files.append(absolute_path)
+                # Remove from py_files if it was added there
+                if absolute_path in py_files:
+                    py_files.remove(absolute_path)
     else:
         # Use default file discovery process
         py_files = get_py_files()
@@ -564,8 +584,14 @@ Examples:
   # Use default files:
   python {os.path.basename(__file__)} concatenate
   
-  # Use custom files:
-  python {os.path.basename(__file__)} concatenate --custom-files src/askp/cli.py tests/test_api_errors.py README.md
+  # Use custom code files:
+  python {os.path.basename(__file__)} concatenate --code-files src/askp/cli.py tests/test_api_errors.py
+  
+  # Use custom documentation files:
+  python {os.path.basename(__file__)} concatenate --doc-files README.md global_rules.md
+  
+  # Use both custom code and documentation files:
+  python {os.path.basename(__file__)} concatenate --code-files src/askp/cli.py --doc-files README.md
   
   # Restore files from clipboard (dry run):
   python {os.path.basename(__file__)} restore --dry-run
@@ -578,23 +604,28 @@ Examples:
     
     # Concatenate command
     concat_parser = subparsers.add_parser("concatenate", aliases=["cat", "concat"], 
-                                          help="Concatenate project files and copy to clipboard")
+                                         help="Concatenate project files and copy to clipboard")
     concat_parser.add_argument("--custom-files", nargs="+", metavar="FILE",
-                              help="Optional list of specific files to include (overrides defaults)")
+                             help="Optional list of specific files to include (overrides defaults) - DEPRECATED, use --code-files instead")
+    concat_parser.add_argument("--code-files", nargs="+", metavar="FILE",
+                             help="Optional list of code files to refactor (overrides defaults)")
+    concat_parser.add_argument("--doc-files", nargs="+", metavar="FILE",
+                             help="Optional list of documentation/context files to include (not for refactoring)")
     
     # Restore command
     restore_parser = subparsers.add_parser("restore", 
-                                          help="Restore files from clipboard content")
+                                         help="Restore files from clipboard content")
     restore_parser.add_argument("--dry-run", action="store_true", 
-                               help="Print what would be done without making changes")
+                              help="Print what would be done without making changes")
     restore_parser.add_argument("--force", action="store_true",
-                               help="Skip strict validation of required files")
+                              help="Skip strict validation of required files")
     
     args = parser.parse_args()
     
     if args.command in ["concatenate", "cat", "concat"]:
-        custom_files = getattr(args, 'custom_files', None)
-        concatenate_command(custom_files)
+        custom_files = getattr(args, 'custom_files', None) or getattr(args, 'code_files', None)
+        doc_files_list = getattr(args, 'doc_files', None)
+        concatenate_command(custom_files, doc_files_list)
     elif args.command == "restore":
         restore_command(dry_run=args.dry_run, force=getattr(args, 'force', False))
     else:
