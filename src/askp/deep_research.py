@@ -24,6 +24,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from openai import OpenAI
 from rich import print as rprint
 import re
+import os
 
 from .cli import load_api_key
 
@@ -127,12 +128,38 @@ def process_research_plan(queries, options):
     if not queries:
         return None
     
+    # Make sure we have the components directory set
+    if "components_dir" in options:
+        # Save the original output directory
+        original_output_dir = options.get("output_dir")
+        
+        # Set the output directory to the components directory for intermediate results
+        options["output_dir"] = options["components_dir"]
+    
     # Execute each query
     from .cli import handle_multi_query
     results = handle_multi_query(queries, options)
     
+    # Restore the original output directory
+    if "components_dir" in options and original_output_dir:
+        options["output_dir"] = original_output_dir
+    
     if not results:
         return None
+    
+    # Add file paths to metadata for cleanup
+    if results and "components_dir" in options:
+        for i, r in enumerate(results):
+            if r and "metadata" in r:
+                # Add the component file path to metadata
+                sanitized_query = ""
+                if "query" in r:
+                    import re
+                    sanitized_query = re.sub(r'[^\w\s-]', '', r["query"]).strip().replace(' ', '_')[:30]
+                
+                filename = f"{i:03d}_{sanitized_query}.json"
+                file_path = os.path.join(options["components_dir"], filename)
+                r["metadata"]["file_path"] = file_path
     
     # Synthesize the research results
     if options.get("verbose", False):
@@ -143,6 +170,10 @@ def process_research_plan(queries, options):
         if synthesis:
             if options.get("verbose", False):
                 print("Successfully generated research synthesis.")
+            # Add synthesis to results
+            synthesis["metadata"] = {
+                "file_path": None  # No file path for synthesis
+            }
             results.append(synthesis)
         else:
             if options.get("verbose", False):
@@ -160,7 +191,7 @@ def process_research_plan(queries, options):
             "cost": 0,
             "num_results": 1,
             "metadata": {
-                "file_path": None  # Will be set by the caller
+                "file_path": None  # No file path for synthesis
             }
         }
         results.append(synthesis)
