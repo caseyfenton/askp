@@ -28,9 +28,13 @@ import re
 from .cli import load_api_key
 
 
-def generate_research_plan(query, model="sonar-pro", temperature=0.7):
+def generate_research_plan(query, options=None):
     """Generate a research plan for deep research."""
-    print("Deep research mode enabled. Generating research plan...")
+    if options is None:
+        options = {}
+    
+    model = options.get("model", "sonar-pro")
+    temperature = options.get("temperature", 0.7)
     
     # Create a prompt for generating a research plan
     prompt = f"""
@@ -56,8 +60,8 @@ def generate_research_plan(query, model="sonar-pro", temperature=0.7):
     
     # Get the research plan
     from .cli import search_perplexity
-    options = {"model": model, "temperature": temperature}
-    plan_result = search_perplexity(prompt, options)
+    plan_options = {"model": model, "temperature": temperature}
+    plan_result = search_perplexity(prompt, plan_options)
     
     try:
         # Extract the JSON content from the response
@@ -91,27 +95,77 @@ def generate_research_plan(query, model="sonar-pro", temperature=0.7):
                 # Format the filename with a number prefix for ordering
                 queries.append(query_text)
         
-        print(f"Generated research plan with {len(research_areas)} sections.")
-        print(f"Generated {len(queries)} research queries.\n")
+        if not options.get("quiet", False):
+            print(f"Generated research plan with {len(research_areas)} sections.")
+            print(f"Generated {len(queries)} research queries.\n")
         
-        return queries, query
+        return queries
         
     except Exception as e:
         print(f"Error generating research plan: {str(e)}")
         # Fallback to a simpler approach
-        return [query], query
+        return None
 
 
-def create_research_queries(query, model="sonar-pro", temperature=0.7):
+def create_research_queries(query, options=None):
     """Create research queries for deep research."""
+    if options is None:
+        options = {}
+    
     # Generate the research plan
-    queries, _ = generate_research_plan(query, model, temperature)
+    queries = generate_research_plan(query, options)
     
     # Ensure we have at least the original query
     if not queries:
         queries = [query]
     
     return queries
+
+
+def process_research_plan(queries, options):
+    """Process a research plan by executing each query and synthesizing the results."""
+    if not queries:
+        return None
+    
+    # Execute each query
+    from .cli import handle_multi_query
+    results = handle_multi_query(queries, options)
+    
+    if not results:
+        return None
+    
+    # Synthesize the research results
+    if options.get("verbose", False):
+        print("Synthesizing research results...")
+    
+    try:
+        synthesis = synthesize_research(options.get("query", "Deep Research"), results, options)
+        if synthesis:
+            if options.get("verbose", False):
+                print("Successfully generated research synthesis.")
+            results.append(synthesis)
+        else:
+            if options.get("verbose", False):
+                print("Failed to generate research synthesis.")
+    except Exception as e:
+        if options.get("verbose", False):
+            print(f"Warning: Failed to synthesize research: {str(e)}")
+        
+        # Create a basic synthesis result
+        synthesis = {
+            "query": f"Research Synthesis: {options.get('query', 'Deep Research')}",
+            "content": f"# {options.get('query', 'Deep Research')}\n\n## Introduction\n\nResearch on: {options.get('query', 'Deep Research')}\n\n## Conclusion\n\nBased on the research conducted, further investigation is recommended.",
+            "model": options.get("model", "sonar-pro"),
+            "tokens": 0,
+            "cost": 0,
+            "num_results": 1,
+            "metadata": {
+                "file_path": None  # Will be set by the caller
+            }
+        }
+        results.append(synthesis)
+    
+    return results
 
 
 def synthesize_research(

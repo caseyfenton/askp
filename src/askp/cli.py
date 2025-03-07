@@ -10,6 +10,7 @@ from rich.markdown import Markdown
 from openai import OpenAI
 from .cost_tracking import log_query_cost
 import re
+import shutil
 console = Console(); VERSION = "2.4.1"
 def sanitize_filename(query: str) -> str:
     safe = ''.join(c if c.isalnum() else '_' for c in query); return safe[:50] if safe.strip('_') else "query"
@@ -62,6 +63,7 @@ def save_result_file(query: str, result: dict, index: int, output_dir: str) -> s
     """Save result to a file and return the filename."""
     os.makedirs(output_dir, exist_ok=True)
     sanitized = sanitize_filename(query)
+    # Use consistent file extension
     filename = f"{index:03d}_{sanitized[:50]}.json"
     filepath = os.path.join(output_dir, filename)
     with open(filepath, "w", encoding="utf-8") as f:
@@ -231,45 +233,35 @@ def handle_multi_query(queries: list, options: dict) -> list:
         results[0]["metadata"]["output_dir"] = output_dir
     
     return results
-def handle_deep_research(query: str, options: dict) -> list:
-    """Handle deep research mode with multiple queries."""
-    from .deep_research import create_research_queries, synthesize_research
+def handle_deep_research(query, options):
+    """Handle deep research mode by generating a research plan and executing it."""
+    from .deep_research import generate_research_plan, process_research_plan
     
-    # Set deep research flag
+    # Generate research plan
+    research_plan = generate_research_plan(query, options)
+    if not research_plan:
+        rprint("[red]Error: Failed to generate research plan[/red]")
+        return None
+    
+    # Add deep research flag to options
     options["deep"] = True
+    options["query"] = query  # Store the original query for filename generation
     
-    # Store the original query for output filename
-    options["query"] = query
+    # Process research plan
+    results = process_research_plan(research_plan, options)
     
-    # Generate research queries
-    queries = create_research_queries(query, options.get("model", "sonar-pro"), options.get("temperature", 0.7))
-    
-    # Process the queries
-    results = handle_multi_query(queries, options)
-    
-    # Synthesize the research results
+    # Add file paths to metadata for cleanup
     if results:
-        print("Synthesizing research results...")
-        try:
-            synthesis = synthesize_research(query, results, options)
-            if synthesis:
-                print("Successfully generated research synthesis.")
-                results.append(synthesis)
-            else:
-                print("Failed to generate research synthesis.")
-        except Exception as e:
-            print(f"Warning: Failed to synthesize research: {str(e)}")
-            # Create a basic synthesis result
-            synthesis = {
-                "query": f"Research Synthesis: {query}",
-                "content": f"# {query}\n\n## Introduction\n\nResearch on: {query}\n\n## Conclusion\n\nBased on the research conducted, further investigation is recommended.",
-                "model": options.get("model", "sonar-pro"),
-                "tokens": 0,
-                "cost": 0,
-                "num_results": 1,
-                "verbose": options.get("verbose", True)
-            }
-            results.append(synthesis)
+        for r in results:
+            if r and "metadata" in r and "file_path" not in r.get("metadata", {}):
+                # If the component file path wasn't already added, try to find it
+                if "components_dir" in options and "query" in r:
+                    sanitized_query = re.sub(r'[^\w\s-]', '', r["query"]).strip().replace(' ', '_')[:30]
+                    index = results.index(r)
+                    filename = f"{index:03d}_{sanitized_query}.json"
+                    file_path = os.path.join(options["components_dir"], filename)
+                    if os.path.exists(file_path):
+                        r["metadata"]["file_path"] = file_path
     
     return results
 def format_json(result: dict) -> str: return json.dumps(result, indent=2)
@@ -371,32 +363,27 @@ def output_multi_results(results: list, options: dict) -> None:
     
     # Generate appropriate filename based on mode
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    if is_deep_research:
-        filename_prefix = "deep_research"
-        # Get the main query for the filename
-        main_query = options.get("query", research_overview) or "research"
-        # Make sure main_query is a string
-        if isinstance(main_query, (tuple, list)):
-            main_query = " ".join(str(item) for item in main_query)
-        # Sanitize the query for use in filename
-        sanitized_query = re.sub(r'[^\w\s-]', '', main_query).strip().replace(' ', '_')[:30]
-        base_filename = f"{filename_prefix}_{sanitized_query}_{timestamp}"
-    elif len(results) == 1:
-        # For single query, use a more descriptive filename
-        query_text = results[0].get("query", "").strip()
-        safe_query = re.sub(r'[^\w\s-]', '', query_text)[:30].strip().replace(' ', '_')
-        base_filename = f"query_result_{safe_query}_{timestamp}"
-    else:
-        base_filename = f"multi_query_results_{timestamp}"
-    
-    # Add appropriate extension based on format
     format_type = options.get("format", "markdown")
-    if format_type == "json":
-        output_filepath = os.path.join(output_dir, f"{base_filename}.json")
-    elif format_type == "markdown":
-        output_filepath = os.path.join(output_dir, f"{base_filename}.markdown")
+    if format_type == "markdown":
+        file_extension = "md"
+    elif format_type == "json":
+        file_extension = "json"
+    else:  # text
+        file_extension = "txt"
+    
+    if is_deep_research:
+        # Deep research output
+        sanitized_query = re.sub(r'[^\w\s-]', '', research_overview).strip().replace(' ', '_')[:30]
+        filename = f"deep_research_{sanitized_query}_{timestamp}.{file_extension}"
+    elif len(results) == 1:
+        # Single query output
+        sanitized_query = re.sub(r'[^\w\s-]', '', results[0].get("query", "")).strip().replace(' ', '_')[:30]
+        filename = f"query_result_{sanitized_query}_{timestamp}.{file_extension}"
     else:
-        output_filepath = os.path.join(output_dir, f"{base_filename}.txt")
+        # Multiple query output
+        filename = f"multi_query_results_{timestamp}.{file_extension}"
+    
+    output_filepath = os.path.join(output_dir, filename)
     
     # Prepare output
     if format_type=="json":
@@ -423,9 +410,10 @@ def output_multi_results(results: list, options: dict) -> None:
             total_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
             queries_per_second = results[0].get("metadata", {}).get("queries_per_second", 0) if results else 0
             elapsed_time = results[0].get("metadata", {}).get("elapsed_time", 0) if results else 0
+            model_name = options.get("model", "sonar-pro")
             
             out += "\n## Summary\n\n"
-            out += f"Totals | {len(results)} queries | {total_tokens:,} tokens | ${total_cost:.4f} | {elapsed_time:.1f}s ({queries_per_second:.2f} q/s)\n\n"
+            out += f"Totals | Model: {model_name} | {len(results)} queries | {total_tokens:,} tokens | ${total_cost:.4f} | {elapsed_time:.1f}s ({queries_per_second:.2f} q/s)\n\n"
             out += f"Results: {output_filepath}\n"
         else:
             # Regular multi-query output
@@ -466,9 +454,10 @@ def output_multi_results(results: list, options: dict) -> None:
             total_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
             queries_per_second = results[0].get("metadata", {}).get("queries_per_second", 0) if results else 0
             elapsed_time = results[0].get("metadata", {}).get("elapsed_time", 0) if results else 0
+            model_name = options.get("model", "sonar-pro")
             
             out += "=== Summary ===\n\n"
-            out += f"Totals | {len(results)} queries | {total_tokens:,} tokens | ${total_cost:.4f} | {elapsed_time:.1f}s ({queries_per_second:.2f} q/s)\n\n"
+            out += f"Totals | Model: {model_name} | {len(results)} queries | {total_tokens:,} tokens | ${total_cost:.4f} | {elapsed_time:.1f}s ({queries_per_second:.2f} q/s)\n\n"
             out += f"Results: {output_filepath}\n"
         else:
             # Regular multi-query output in text mode
@@ -497,16 +486,53 @@ def output_multi_results(results: list, options: dict) -> None:
     
     # No need to print the output filepath here as it's already included in the formatted output
     
-    # Output to console
-    if format_type == "markdown":
-        console.print(Markdown(out))
-    else:
-        click.echo(out)
+    # Output to console only for single queries or if explicitly requested
+    quiet_mode = options.get("quiet", False)
+    if not quiet_mode and (len(results) == 1 or options.get("verbose", False)):
+        if format_type == "markdown":
+            console.print(Markdown(out))
+        else:
+            click.echo(out)
+    
+    # Move component files to trash if requested
+    if options.get("cleanup_component_files", False) and is_deep_research:
+        # Create trash directory if it doesn't exist
+        trash_dir = os.path.join(output_dir, ".trash")
+        os.makedirs(trash_dir, exist_ok=True)
+        
+        # Get all component files used in deep research
+        component_files = []
+        for r in results:
+            if r and "metadata" in r and "file_path" in r.get("metadata", {}):
+                component_files.append(r["metadata"]["file_path"])
+        
+        # Move component files to trash
+        if component_files:
+            # Create a timestamped directory in trash
+            trash_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            trash_session_dir = os.path.join(trash_dir, f"deep_research_{trash_timestamp}")
+            os.makedirs(trash_session_dir, exist_ok=True)
+            
+            moved_count = 0
+            for file_path in component_files:
+                if os.path.exists(file_path):
+                    try:
+                        # Get just the filename
+                        filename = os.path.basename(file_path)
+                        # Move file to trash
+                        shutil.move(file_path, os.path.join(trash_session_dir, filename))
+                        moved_count += 1
+                    except Exception as e:
+                        if not options.get("quiet", False):
+                            rprint(f"[yellow]Warning: Could not move {file_path} to trash: {e}[/yellow]")
+            
+            if not options.get("quiet", False):
+                rprint(f"[green]Moved {moved_count} component files to trash: {trash_session_dir}[/green]")
 @click.command()
 @click.version_option(version=VERSION, prog_name="askp")
 @click.argument("query_text", nargs=-1, required=False)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-@click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results")
+@click.option("--quiet", "-q", is_flag=True, help="Suppress console output for multiple queries")
 @click.option("--format", "-f", type=click.Choice(["text", "json", "markdown"]), default="markdown", help="Output format")
 @click.option("--output", "-o", type=click.Path(), help="Save output to file")
 @click.option("--num-results", "-n", type=int, default=5, help="Number of results to return from Perplexity")
@@ -521,9 +547,10 @@ def output_multi_results(results: list, options: dict) -> None:
 @click.option("--combine", "-c", is_flag=True, help="Combine multi-query results into a single output")
 @click.option("--expand", "-e", type=int, help="Expand queries to specified total number by generating related queries")
 @click.option("--deep", "-d", is_flag=True, help="Perform deep research by generating a comprehensive research plan")
+@click.option("--cleanup-component-files", is_flag=True, help="Move component files to trash after deep research is complete")
 def cli(query_text, verbose, quiet, format, output, num_results, model, 
         temperature, token_max, reasoning, pro_reasoning, single, 
-        max_parallel, file, combine, expand, deep):
+        max_parallel, file, combine, expand, deep, cleanup_component_files):
     """ASKP CLI - Search Perplexity AI from the command line"""
     
     # Check for incompatible options
@@ -582,17 +609,44 @@ def cli(query_text, verbose, quiet, format, output, num_results, model,
         "token_max_set_explicitly": token_max_set_explicitly, 
         "reasoning_set_explicitly": reasoning_set_explicitly, 
         "output_dir": get_output_dir(),
-        "multi": not single
+        "multi": not single,
+        "cleanup_component_files": cleanup_component_files
     }
     
     # Handle deep research mode
     if deep:
-        if verbose: rprint("[blue]Deep research mode enabled. Generating research plan...[/blue]")
-        # Add the query to options for filename generation
-        main_query = queries[0] if queries else "research"
-        options["query"] = main_query
+        if not quiet:
+            rprint("[blue]Deep research mode enabled. Generating research plan...[/blue]")
+        
+        # Set model and token_max for deep research if not explicitly set
+        if not reasoning_set_explicitly:
+            options["model"] = "sonar-pro"  # Default to sonar-pro for deep research
+            
+        if not quiet:
+            rprint(f"[blue]Using model: {options['model']} | Temperature: {options['temperature']}[/blue]")
+        
+        # Create components directory for individual query results
+        components_dir = os.path.join(options["output_dir"], "components")
+        os.makedirs(components_dir, exist_ok=True)
+        
+        # Store the original output directory for the final output
+        final_output_dir = options["output_dir"]
+        
+        # Set component directory for intermediate results
+        options["components_dir"] = components_dir
+        
+        # Set deep research flag and cleanup flag
         options["deep"] = True
-        results = handle_deep_research(main_query, options)
+        options["cleanup_component_files"] = cleanup_component_files
+        options["query"] = queries[0]  # Store original query
+        
+        # Process queries
+        results = handle_deep_research(queries[0], options)
+        
+        # Restore original output directory for final output
+        options["output_dir"] = final_output_dir
+        
+        # Process queries
         if not results: 
             rprint("[red]Error: Failed to process queries[/red]")
             sys.exit(1)
@@ -600,8 +654,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model,
     
     # Handle query expansion if requested
     elif expand and expand > len(queries):
-        if not quiet:
-            rprint(f"[blue]Expanding {len(queries)} queries to {expand} total queries...[/blue]")
+        rprint(f"[blue]Expanding {len(queries)} queries to {expand} total queries...[/blue]")
         from .expand import generate_expanded_queries
         queries = generate_expanded_queries(
             queries, 

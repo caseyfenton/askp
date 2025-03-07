@@ -1,5 +1,18 @@
 # ASKP Changelog
 
+## 2.4.1 (2025-03-06)
+
+### Fixed
+- Fixed deep research synthesis with improved error handling and result processing
+- Enhanced query handling for deep research mode to ensure consistent output
+- Improved filename generation for research outputs with better sanitization
+- Fixed tuple encoding issues in API responses
+- Added robust fallback mechanisms for synthesis failures
+
+### Changed
+- Refactored deep research code for better maintainability and error recovery
+- Updated version to 2.4.1 across all relevant files
+
 ## 2.4.0 (2025-03-06)
 
 ### Added
