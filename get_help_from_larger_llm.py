@@ -117,34 +117,34 @@ def get_py_files() -> List[str]:
     all_files = []
     
     # First add priority files in order
-    for filename in PRIORITY_PY_FILES:
-        filepath = PROJECT_ROOT / filename
-        if filepath.is_file() and not any(should_exclude(part) for part in str(filepath).split(os.sep)):
-            all_files.append(str(filepath))
+    for file in PRIORITY_PY_FILES:
+        file_path = PROJECT_ROOT / file
+        if file_path.exists():
+            all_files.append(str(file_path))
+        else:
+            print(f"Warning: Priority file not found: {file}")
     
-    # Then add any remaining Python files
-    for root, dirs, files in os.walk(PROJECT_ROOT):
+    # Then add all other Python files
+    for root, _, files in os.walk(PROJECT_ROOT):
         # Skip excluded directories
-        root_path = Path(root)
-        rel_path = root_path.relative_to(PROJECT_ROOT)
-        
-        # Skip root-level excluded directories
-        if str(rel_path) != '.' and any(should_exclude(part) for part in str(rel_path).split(os.sep)):
-            dirs[:] = []  # Skip all subdirectories
+        if any(fnmatch.fnmatch(root, str(PROJECT_ROOT / pattern)) or 
+               fnmatch.fnmatch(os.path.basename(root), pattern) 
+               for pattern in EXCLUDE_PATTERNS):
             continue
             
-        # Filter directories to exclude
-        dirs[:] = [d for d in dirs if not should_exclude(d)]
-        
         for file in files:
-            if file.endswith('.py') and not should_exclude(file):
-                filepath = os.path.join(root, file)
+            # Skip excluded files
+            if any(fnmatch.fnmatch(file, pattern) for pattern in EXCLUDE_PATTERNS):
+                continue
                 
-                # Double-check the entire path against exclusion patterns
-                rel_filepath = os.path.relpath(filepath, PROJECT_ROOT)
-                if not any(should_exclude(part) for part in rel_filepath.split(os.sep)):
-                    if filepath not in all_files:  # Avoid duplicates
-                        all_files.append(filepath)
+            if file.endswith('.py'):
+                file_path = os.path.join(root, file)
+                
+                # Skip if already added as a priority file
+                if file_path in all_files:
+                    continue
+                    
+                all_files.append(file_path)
     
     return all_files
 
