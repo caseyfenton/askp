@@ -210,28 +210,45 @@ def create_unified_file(py_files: List[str], doc_files: List[str]) -> str:
 # 1. PERFORMANCE IMPROVEMENT:
 #    - Optimize code for faster execution
 #    - Reduce memory usage
+#    - Minimize tool calls and combine operations where possible
 # 
 # 2. CODE QUALITY:
 #    - Improve code readability and maintainability
 #    - Simplify complex logic
 #    - Remove redundant code
+#    - Follow Vertical Compression Protocol (VCP): minimize vertical space while preserving readability
+#    - Group related imports, combine related operations, use single-line functions where appropriate
 # 
-# 3. TECHNICAL CONSTRAINTS:
+# 3. ERROR HANDLING:
+#    - Implement robust error handling for API interactions
+#    - Add graceful fallbacks for failure scenarios
+#    - Ensure proper validation of inputs and outputs
+#    - Add appropriate retry mechanisms for transient failures
+#
+# 4. TESTING:
+#    - Ensure code remains testable
+#    - Consider test coverage when refactoring
+#    - Maintain clear function boundaries for effective unit testing
+# 
+# 5. TECHNICAL CONSTRAINTS:
 #    - MUST work with the current project structure
 #    - Must maintain existing functionality
 #    - Minimize configuration requirements
+#    - Preserve docstrings, types, and critical comments
 # 
 # DO NOT:
 # - Make dramatic, large-scale architectural changes
 # - Remove existing functionality
 # - Change the core API interface
+# - Exceed 6000 characters per file when possible
 #
 # The refactored code should be more efficient, readable, and maintainable
 # while preserving all current functionality.
 #
 # NOTE: The global_rules.md file at the end is included for reference ONLY. 
 # It contains coding style guidelines and standards. DO NOT refactor this file.
-# """)
+# 
+""")
     
     # Documentation files section
     result.append(f"\n{EXPECTED_MARKERS['DOC_SECTION']}\n")
