@@ -237,10 +237,10 @@ def create_unified_file(py_files: List[str], doc_files: List[str]) -> str:
 #    - Preserve docstrings, types, and critical comments
 # 
 # DO NOT:
-# - Make dramatic, large-scale architectural changes
-# - Remove existing functionality
-# - Change the core API interface
-# - Exceed 6000 characters per file when possible
+# DO NOT: Make dramatic, large-scale architectural changes
+# DO NOT: Remove existing functionality
+# DO NOT: Change the core API interface
+# DO NOT: Exceed 6000 characters per file when possible
 #
 # The refactored code should be more efficient, readable, and maintainable
 # while preserving all current functionality.
