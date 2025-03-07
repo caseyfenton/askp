@@ -19,6 +19,7 @@ import argparse
 import subprocess
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional, Set
+from datetime import datetime
 
 # Core configuration
 PROJECT_ROOT = Path(os.getcwd())  # Use current directory as project root
@@ -291,6 +292,50 @@ def create_unified_file(py_files: List[str], doc_files: List[str]) -> str:
     
     return "\n".join(result)
 
+def estimate_tokens(file_size: int) -> int:
+    """Estimate the number of tokens based on file size.
+    
+    Args:
+        file_size: Size of the file in bytes
+        
+    Returns:
+        Estimated number of tokens (roughly 4 chars per token)
+    """
+    return int(file_size / 4)  # Approximate token count based on bytes
+
+def format_size(size_bytes: int) -> str:
+    """Format file size in a human-readable format.
+    
+    Args:
+        size_bytes: Size in bytes
+        
+    Returns:
+        Formatted size string (e.g., "1.23 KB", "4.56 MB")
+    """
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+def format_file_info(file_path: str, project_root: str) -> str:
+    """Format detailed information about a file.
+    
+    Args:
+        file_path: Path to the file
+        project_root: Project root directory
+        
+    Returns:
+        Formatted string with file information
+    """
+    rel_path = os.path.relpath(file_path, project_root)
+    size_bytes = os.path.getsize(file_path)
+    mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+    token_estimate = estimate_tokens(size_bytes)
+    
+    return f"{rel_path} ({format_size(size_bytes)}, ~{token_estimate:,} tokens, modified: {mod_time.strftime('%Y-%m-%d %H:%M')})"
+
 def validate_content(content: str, strict: bool = True) -> Tuple[bool, str, Dict[str, str]]:
     """
     Validate that clipboard content is in the expected unified format.
@@ -452,38 +497,55 @@ def concatenate_command(custom_files: List[str] = None, doc_files_list: List[str
         doc_files = get_doc_files()
     
     print("\nIncluded Python files:")
+    total_py_size = 0
+    total_py_tokens = 0
     for f in py_files:
-        rel_path = os.path.relpath(f, PROJECT_ROOT)
-        print(f"  - {rel_path} ({os.path.getsize(f) / 1024:.1f} KB)")
+        size_bytes = os.path.getsize(f)
+        total_py_size += size_bytes
+        total_py_tokens += estimate_tokens(size_bytes)
+        print(f"  - {format_file_info(f, PROJECT_ROOT)}")
     
     print("\nIncluded documentation files:")
+    total_doc_size = 0
+    total_doc_tokens = 0
     for f in doc_files:
-        rel_path = os.path.relpath(f, PROJECT_ROOT)
-        print(f"  - {rel_path} ({os.path.getsize(f) / 1024:.1f} KB)")
+        size_bytes = os.path.getsize(f)
+        total_doc_size += size_bytes
+        total_doc_tokens += estimate_tokens(size_bytes)
+        print(f"  - {format_file_info(f, PROJECT_ROOT)}")
     
     if not py_files:
         print("No Python files found.")
         return
     
-    total_py_size = sum(os.path.getsize(f) for f in py_files) / 1024
-    total_doc_size = sum(os.path.getsize(f) for f in doc_files) / 1024
-    print(f"\nFound {len(py_files)} Python files ({total_py_size:.1f} KB) and {len(doc_files)} documentation files ({total_doc_size:.1f} KB).")
+    total_size = total_py_size + total_doc_size
+    total_tokens = total_py_tokens + total_doc_tokens
     
-    # Create the unified file
-    content = create_unified_file(py_files, doc_files)
+    print(f"\nSummary:")
+    print(f"  - Code files: {len(py_files)} files, {format_size(total_py_size)}, ~{total_py_tokens:,} tokens")
+    print(f"  - Documentation files: {len(doc_files)} files, {format_size(total_doc_size)}, ~{total_doc_tokens:,} tokens")
+    print(f"  - Total: {len(py_files) + len(doc_files)} files, {format_size(total_size)}, ~{total_tokens:,} tokens")
+    
+    # Estimate API costs based on typical LLM pricing
+    cost_per_1k_tokens = 0.002  # $0.002 per 1K tokens, typical for many LLMs
+    estimated_cost = (total_tokens / 1000) * cost_per_1k_tokens
+    print(f"  - Estimated LLM processing cost: ${estimated_cost:.4f} (based on ${cost_per_1k_tokens:.4f}/1K tokens)")
+    
+    # Create unified file
+    unified_content = create_unified_file(py_files, doc_files)
     
     # Save a temporary copy
     tmp_file = PROJECT_ROOT / "consolidated_project.txt"
     with open(tmp_file, 'w', encoding='utf-8') as f:
-        f.write(content)
+        f.write(unified_content)
     
     # Copy to clipboard
-    if copy_to_clipboard(content):
-        print("Content copied to clipboard!")
+    if copy_to_clipboard(unified_content):
+        print(f"Content copied to clipboard!")
     else:
-        print("Failed to copy to clipboard. You can find the content in consolidated_project.txt")
+        print(f"Failed to copy to clipboard. You can find the content in consolidated_project.txt")
     
-    print(f"Total size: {len(content)} bytes ({len(content)/1024:.1f} KB)")
+    print(f"Total size: {len(unified_content)} bytes ({format_size(len(unified_content))})")
 
 def restore_command(dry_run: bool = False, force: bool = False) -> None:
     """Command to restore files from clipboard."""

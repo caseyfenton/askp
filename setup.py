@@ -8,7 +8,7 @@ setup(
     name="askp",
     version="2.4.1",  # Updated with deep research fixes, improved error handling, and better result processing
     author="Casey Fenton",
-    author_email="caseyfenton@gmail.com",
+    author_email="caseyfenton@users.noreply.github.com",
     description="ASKP – Ask Perplexity CLI for advanced search and knowledge discovery",
     long_description=long_description,
     long_description_content_type="text/markdown",

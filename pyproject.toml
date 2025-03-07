@@ -8,7 +8,7 @@ version = "2.4.1"
 description = "ASKP – Ask Perplexity CLI for advanced search and knowledge discovery"
 readme = "README.md"
 authors = [
-    {name = "Casey Fenton", email = "caseyfenton@gmail.com"},
+    {name = "Casey Fenton", email = "caseyfenton@users.noreply.github.com"},
 ]
 license = {text = "MIT"}
 classifiers = [
