@@ -87,7 +87,7 @@ def execute_query(query: str, index: int, options: dict, lock: threading.Lock = 
         rprint(f"[green]Combined results saved to {combined_file}[/green]")
     if options.get("suppress_model_display", False):
         truncated = query[:40] + "..." if len(query) > 40 else query; print(f"Query {index+1}: {truncated} | {result.get('bytes',0):,} bytes | {result.get('tokens',0):,} tokens | ${result['metadata']['cost']:.4f}")
-    rprint(f"[green]Result saved to {result_file}[/green]")
+    rprint(f"[green]Result: {result_file}[/green]")
     return result
 def handle_multi_query(queries: list, options: dict) -> list:
     """Process multiple queries, with support for deep research mode."""
@@ -117,7 +117,7 @@ def handle_multi_query(queries: list, options: dict) -> list:
     print(f"\nProcessing {len(queries)} queries in parallel..."); 
     
     model_info = get_model_info(options.get("model", "sonar-pro"), options.get("reasoning", False), options.get("pro_reasoning", False))
-    print(f"Model: {model_info['model']}{' (reasoning)' if model_info.get('reasoning', False) else ''} | Temperature: {options.get('temperature',0.7)}")
+    print(f"Model: {model_info['model']}{' (reasoning)' if model_info.get('reasoning', False) else ''} | Temp: {options.get('temperature',0.7)}")
     options["suppress_model_display"] = True; results_lock = threading.Lock(); results = []; total_tokens = 0; total_cost = 0
     
     # Track start time for queries per second calculation
@@ -210,11 +210,19 @@ def handle_multi_query(queries: list, options: dict) -> list:
     
     print("\nProcessing complete!"); 
     output_dir = get_output_dir()
-    print(f"Results saved in directory: {output_dir}"); 
-    print(f"Queries processed: {len(results)}/{len(queries)}"); 
-    print(f"Total tokens used: {total_tokens:,}"); 
-    print(f"Total cost: ${total_cost:.4f}");
-    print(f"Performance: {elapsed_time:.1f}s ({queries_per_second:.2f} queries/second)");
+    
+    # For single query, show just the result file path
+    if len(results) == 1:
+        print(f"Results: {output_dir}/{os.path.basename(save_result_file(results[0]['query'], results[0], 0, output_dir))}")
+    else:
+        print(f"Results: {output_dir}")
+    
+    # More concise format for query summary
+    print(f"Queries: {len(results)}/{len(queries)}"); 
+    
+    # Format totals with pipes to match query format
+    total_bytes = sum(r.get("bytes", 0) for r in results if r)
+    print(f"Totals | {total_bytes:,} bytes | {total_tokens:,} tokens | ${total_cost:.4f} | {elapsed_time:.1f}s ({queries_per_second:.2f} q/s)");
     
     # Store metrics in results for use in output_multi_results
     if results:
@@ -373,6 +381,11 @@ def output_multi_results(results: list, options: dict) -> None:
         # Sanitize the query for use in filename
         sanitized_query = re.sub(r'[^\w\s-]', '', main_query).strip().replace(' ', '_')[:30]
         base_filename = f"{filename_prefix}_{sanitized_query}_{timestamp}"
+    elif len(results) == 1:
+        # For single query, use a more descriptive filename
+        query_text = results[0].get("query", "").strip()
+        safe_query = re.sub(r'[^\w\s-]', '', query_text)[:30].strip().replace(' ', '_')
+        base_filename = f"query_result_{safe_query}_{timestamp}"
     else:
         base_filename = f"multi_query_results_{timestamp}"
     
@@ -412,15 +425,14 @@ def output_multi_results(results: list, options: dict) -> None:
             elapsed_time = results[0].get("metadata", {}).get("elapsed_time", 0) if results else 0
             
             out += "\n## Summary\n\n"
-            out += f"* Total Queries: {len(results)}\n"
-            out += f"* Total Tokens: {total_tokens:,}\n"
-            out += f"* Total Cost: ${total_cost:.4f}\n"
-            out += f"* Performance: {elapsed_time:.1f}s ({queries_per_second:.2f} queries/second)\n"
-            out += f"* Results Directory: {output_dir}\n"
-            out += f"* Output File: {output_filepath}\n"
+            out += f"Totals | {len(results)} queries | {total_tokens:,} tokens | ${total_cost:.4f} | {elapsed_time:.1f}s ({queries_per_second:.2f} q/s)\n\n"
+            out += f"Results: {output_filepath}\n"
         else:
             # Regular multi-query output
-            out = "# Multiple Query Results\n\n"
+            if len(results) == 1:
+                out = "# Single Query Result\n\n"
+            else:
+                out = "# Multiple Query Results\n\n"
             for i, r in enumerate(results):
                 if r: 
                     # Safely get the query value, using a default if not present
@@ -433,11 +445,8 @@ def output_multi_results(results: list, options: dict) -> None:
             total_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
             
             out += "\n## Summary\n\n"
-            out += f"* Total Queries: {len(results)}\n"
-            out += f"* Total Tokens: {total_tokens:,}\n"
-            out += f"* Total Cost: ${total_cost:.4f}\n"
-            out += f"* Results Directory: {output_dir}\n"
-            out += f"* Output File: {output_filepath}\n"
+            out += f"Totals | {len(results)} queries | {total_tokens:,} tokens | ${total_cost:.4f}\n\n"
+            out += f"Results: {output_filepath}\n"
     else:
         # Text format
         if is_deep_research:
@@ -459,15 +468,14 @@ def output_multi_results(results: list, options: dict) -> None:
             elapsed_time = results[0].get("metadata", {}).get("elapsed_time", 0) if results else 0
             
             out += "=== Summary ===\n\n"
-            out += f"Total Queries: {len(results)}\n"
-            out += f"Total Tokens: {total_tokens:,}\n"
-            out += f"Total Cost: ${total_cost:.4f}\n"
-            out += f"Performance: {elapsed_time:.1f}s ({queries_per_second:.2f} queries/second)\n"
-            out += f"Results Directory: {output_dir}\n"
-            out += f"Output File: {output_filepath}\n"
+            out += f"Totals | {len(results)} queries | {total_tokens:,} tokens | ${total_cost:.4f} | {elapsed_time:.1f}s ({queries_per_second:.2f} q/s)\n\n"
+            out += f"Results: {output_filepath}\n"
         else:
             # Regular multi-query output in text mode
-            out = "=== Multi-Query Results ===\n\n"
+            if len(results) == 1:
+                out = "=== Single Query Result ===\n\n"
+            else:
+                out = "=== Multi-Query Results ===\n\n"
             for i, r in enumerate(results):
                 if r: 
                     # Safely get the query value, using a default if not present
@@ -480,24 +488,20 @@ def output_multi_results(results: list, options: dict) -> None:
             total_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
             
             out += "=== Summary ===\n\n"
-            out += f"Total Queries: {len(results)}\n"
-            out += f"Total Tokens: {total_tokens:,}\n"
-            out += f"Total Cost: ${total_cost:.4f}\n"
-            out += f"Results Directory: {output_dir}\n"
-            out += f"Output File: {output_filepath}\n"
+            out += f"Totals | {len(results)} queries | {total_tokens:,} tokens | ${total_cost:.4f}\n\n"
+            out += f"Results: {output_filepath}\n"
     
     # Write to file
     with open(output_filepath, "w", encoding="utf-8") as f:
         f.write(out)
+    
+    # No need to print the output filepath here as it's already included in the formatted output
     
     # Output to console
     if format_type == "markdown":
         console.print(Markdown(out))
     else:
         click.echo(out)
-    
-    # Always show the output filepath
-    rprint(f"[blue]Results saved to: {output_filepath}[/blue]")
 @click.command()
 @click.version_option(version=VERSION, prog_name="askp")
 @click.argument("query_text", nargs=-1, required=False)
