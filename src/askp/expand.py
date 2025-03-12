@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 """Query expansion module for ASKP CLI."""
-
 import json
 from typing import List, Dict, Any
 from openai import OpenAI
 from rich import print as rprint
-
 from .cli import load_api_key
 
-
 def generate_expanded_queries(
-    original_queries: List[str], 
+    original_queries: List[str],
     total_queries: int,
     model: str = "sonar-pro",
     temperature: float = 0.7
@@ -29,76 +26,52 @@ def generate_expanded_queries(
     """
     if total_queries <= len(original_queries):
         return original_queries
-    
-    # Number of new queries to generate
     num_new_queries = total_queries - len(original_queries)
-    
     try:
-        # Load API key
         api_key = load_api_key()
         client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
-        
-        # Create the prompt for generating additional queries
         prompt = _create_expansion_prompt(original_queries, num_new_queries)
-        
-        # Make API call
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
             max_tokens=1024
         )
-        
-        # Parse the response
         content = response.choices[0].message.content
         try:
-            # Try to extract JSON from the response text
-            json_start = content.find('{')
-            json_end = content.rfind('}') + 1
-            
+            json_start = content.find("{")
+            json_end = content.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 json_str = content[json_start:json_end]
                 result = json.loads(json_str)
                 new_queries = result.get("queries", [])
             else:
-                # Fallback: try to parse lines that look like queries
-                lines = content.split('\n')
+                lines = content.split("\n")
                 new_queries = []
                 for line in lines:
                     line = line.strip()
                     if line and (line.startswith('"') or line.startswith('-') or line.startswith('*')):
-                        # Clean up the line
                         query = line.lstrip('-*"\' ').rstrip('",\' ')
                         if query:
                             new_queries.append(query)
-            
-            # Validate and clean up new queries
-            valid_new_queries = []
-            for query in new_queries:
-                if isinstance(query, str) and query.strip() and query not in original_queries:
-                    valid_new_queries.append(query.strip())
-            
-            # Ensure we don't exceed the requested total
+            valid_new_queries = [query.strip() for query in new_queries if isinstance(query, str) and query.strip() and query not in original_queries]
             valid_new_queries = valid_new_queries[:num_new_queries]
-            
-            # Combine original and new queries
             all_queries = original_queries + valid_new_queries
-            
             if valid_new_queries:
                 rprint(f"[green]Generated {len(valid_new_queries)} additional queries.[/green]")
             else:
                 rprint("[yellow]Warning: Could not generate additional queries. Using original queries.[/yellow]")
-            
+            if len(all_queries) == 1:
+                rprint("[blue]Single detailed search mode activated.[/blue]")
+            else:
+                rprint("[blue]Multi-query search mode activated with detailed output.[/blue]")
             return all_queries
-            
         except json.JSONDecodeError:
             rprint("[yellow]Warning: Could not parse expanded queries response as JSON. Using original queries.[/yellow]")
             return original_queries
-            
     except Exception as e:
         rprint(f"[yellow]Warning: Failed to expand queries: {e}. Using original queries.[/yellow]")
         return original_queries
-
 
 def _create_expansion_prompt(original_queries: List[str], num_new_queries: int) -> str:
     """
@@ -112,7 +85,6 @@ def _create_expansion_prompt(original_queries: List[str], num_new_queries: int) 
         Prompt string
     """
     queries_str = "\n".join([f"- {q}" for q in original_queries])
-    
     prompt = f"""Given the following research queries:
 
 {queries_str}

@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="askp",
-    version="2.4.1",  # Updated with deep research fixes, improved error handling, and better result processing
+    version="2.4.1",
     author="Casey Fenton",
     author_email="caseyfenton@users.noreply.github.com",
     description="ASKP – Ask Perplexity CLI for advanced search and knowledge discovery",

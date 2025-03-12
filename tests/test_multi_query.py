@@ -145,6 +145,57 @@ def test_handle_multi_query(mock_process):
     assert mock_process.call_count == 3
 
 @patch('askp.cli.execute_query')
+def test_handle_multi_query_concurrency(mock_process):
+    """Test handle_multi_query function with concurrent execution."""
+    # Create a list to track the order of execution
+    execution_order = []
+    
+    # Create a mock implementation that records execution order
+    def mock_execute_query(query, index, opts, progress=None):
+        execution_order.append(query)
+        return {
+            'query': query, 
+            'results': [{'content': f'content for {query}'}],
+            'metadata': {'verbose': False, 'cost': 0.001},
+            'tokens': 100,
+            'tokens_used': 100
+        }
+    
+    mock_process.side_effect = mock_execute_query
+    
+    # Test with parallel execution enabled
+    results = handle_multi_query(
+        ["query1", "query2", "query3", "query4", "query5"], 
+        {"parallel": True, "max_parallel": 3}
+    )
+    
+    # Verify results
+    assert len(results) == 5
+    assert mock_process.call_count == 5
+    
+    # Verify that all queries were processed
+    queries_processed = [r['query'] for r in results]
+    assert sorted(queries_processed) == sorted(["query1", "query2", "query3", "query4", "query5"])
+    
+    # Reset mocks for sequential test
+    mock_process.reset_mock()
+    execution_order.clear()
+    
+    # Test with sequential execution
+    results = handle_multi_query(
+        ["query1", "query2", "query3"], 
+        {"parallel": False}
+    )
+    
+    # Verify results
+    assert len(results) == 3
+    assert mock_process.call_count == 3
+    
+    # Verify that all queries were processed
+    queries_processed = [r['query'] for r in results]
+    assert sorted(queries_processed) == sorted(["query1", "query2", "query3"])
+
+@patch('askp.cli.execute_query')
 @patch('askp.cli.get_output_dir')
 @patch('builtins.print')
 def test_handle_multi_query_deep_research(mock_print, mock_get_output_dir, mock_process):

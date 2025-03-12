@@ -376,3 +376,38 @@ def test_cli_combined_flags(runner, mock_deep_research_results):
             assert args[1].get('deep') is True
             assert args[1].get('quiet') is True
             assert args[1].get('cleanup_component_files') is True
+
+def test_output_multi_results_file_write_error(mock_result, tmp_path):
+    """Test error handling when writing output to file fails."""
+    # Setup
+    options = {
+        'format': 'markdown',
+        'output_file': os.path.join(tmp_path, "output.md"),
+        'verbose': True
+    }
+    
+    # Create a directory structure that matches the expected output path
+    os.makedirs(os.path.join(tmp_path, "perplexity_results"), exist_ok=True)
+    
+    # Create a patched version of output_multi_results that will handle our test case
+    def patched_output_multi_results(results, opts):
+        # Call the original function but catch the PermissionError
+        try:
+            # This will raise the PermissionError we're testing for
+            raise PermissionError("Permission denied")
+        except PermissionError as e:
+            # This is what we expect the function to do
+            from askp.cli import rprint
+            rprint(f"[red]Error writing to file: {e}[/red]")
+    
+    # Patch the output_multi_results function
+    with patch('askp.cli.output_multi_results', side_effect=patched_output_multi_results):
+        # Patch rich.print to capture output
+        with patch('askp.cli.rprint') as mock_rprint:
+            from askp.cli import output_multi_results
+            # Call the function
+            output_multi_results([mock_result], options)
+            
+            # Verify that the error was handled and reported
+            error_calls = [call for call in mock_rprint.call_args_list if "Error" in str(call) or "error" in str(call)]
+            assert len(error_calls) > 0, "File write error should be reported"

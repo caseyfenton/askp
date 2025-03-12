@@ -2,6 +2,12 @@
 
 ASKP (Ask Perplexity) is a powerful command-line interface for natural language search and knowledge discovery using the Perplexity API, with built-in cost tracking and advanced features. Currently integrated with Perplexity API, with plans to support additional LLM providers like Open Router.
 
+## Project Status
+
+**BETA**: ASKP is currently in beta development. While core functionality is stable, some features are still being refined and tested. Please report any issues you encounter.
+
+**Cost Tracking Note**: The cost tracking feature provides an estimate based on approximate token counts (calculated as bytes divided by 3) and publicly available pricing information for the models. Actual costs may vary from these estimates. We're continuously working to improve the accuracy of these calculations.
+
 ## Features
 
 - Natural language queries through Perplexity API
@@ -25,6 +31,7 @@ ASKP is designed specifically for developers using modern AI-powered coding tool
 
 ## Future Enhancements
 
+- MCP Server integration
 - Support for Open Router and additional LLM providers
 - Enhanced context handling
 - Improved cost optimization
@@ -40,22 +47,18 @@ pip install askp
 
 # Or install with development dependencies
 pip install askp[dev]
-```
 
-### Option 2: Install from Source
+Option 2: Install from Source
 
-```bash
 # Clone the repository
 git clone https://github.com/caseyfenton/askp.git
 cd askp
 
 # Install
 ./install.sh
-```
 
-## Usage
+Usage
 
-```bash
 # Basic query
 askp "What is the capital of France?"
 
@@ -89,11 +92,9 @@ askp costs
 
 # Get help
 askp --help
-```
 
-## Options
+Options
 
-```
 Options:
   --version                       Show the version and exit.
   -v, --verbose                   Enable verbose output
@@ -114,47 +115,40 @@ Options:
   -e, --expand INTEGER            Expand queries to specified total number by generating related queries
   -d, --deep                      Generate a comprehensive research plan with detailed queries
   --help                          Show this message and exit.
-```
 
-## Tips
+Tips
 
-**TIP**: Run multiple searches in a single command to parallelize your research:
-```bash
+TIP: Run multiple searches in a single command to parallelize your research:
+
 askp -m "Python packaging best practices" "Common Python security issues" "Cross-platform Python compatibility"
-```
 
-**TIP**: Combine results into a single output file for faster reading and analysis:
-```bash
+TIP: Combine results into a single output file for faster reading and analysis:
+
 askp -m -c -o research.md "Query 1" "Query 2" "Query 3"
-```
 
-**TIP**: For complex research topics, break down your question into 5-10 specific queries for more comprehensive results.
+TIP: For complex research topics, break down your question into 5-10 specific queries for more comprehensive results.
 
-**TIP**: Use ASKP with Windsurf or other vector-enabled IDEs to make all search results instantly searchable within your codebase.
+TIP: Use ASKP with Windsurf or other vector-enabled IDEs to make all search results instantly searchable within your codebase.
 
-**TIP**: Track your API usage costs with `askp costs` to monitor your spending.
+TIP: Track your API usage costs with askp costs to monitor your spending.
 
-**TIP**: Use the new `-e` feature to automatically generate related queries:
-```bash
+TIP: Use the new -e feature to automatically generate related queries:
+
 # Start with one query and expand to 5 total queries
 askp -e 5 "Machine learning fundamentals"
-```
 
-**TIP**: For complex research topics, use the deep research mode to generate a comprehensive research plan:
-```bash
+TIP: For complex research topics, use the deep research mode to generate a comprehensive research plan:
+
 # Generate a detailed research plan with focused sub-queries
 askp -d "Impact of climate change on agriculture"
-```
 
-**TIP**: Increase parallel processing capacity for large batches of queries:
-```bash
+TIP: Increase parallel processing capacity for large batches of queries:
+
 # Process up to 20 queries in parallel
 askp -m -p 20 -i many_queries.txt
-```
 
-## Development
+Development
 
-```bash
 # Install development dependencies
 pip install -e ".[dev]"
 
@@ -163,14 +157,13 @@ pytest
 
 # Run linter
 flake8
-```
 
-## About the Creator
+About the Creator
 
 ASKP is brought to you by Casey Fenton, one of the founders of Couchsurfing. With 30 years of experience as both an entrepreneur and programmer, Casey created ASKP to share powerful AI tools with friends and colleagues. ASKP has become one of his most valuable day-to-day tools, saving significant time and multiplying productivity.
 
-> "It's really wonderful and magical when you find a tool that really serves as a timesaver and force multiplier. I hope other people find this to be as helpful as I have experienced it being." - Casey Fenton
+	“It’s really wonderful and magical when you find a tool that really serves as a timesaver and force multiplier. I hope other people find this to be as helpful as I have experienced it being.” - Casey Fenton
 
-## License
+License
 
 MIT

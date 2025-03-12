@@ -117,3 +117,52 @@ def test_cli_priority_order(runner, temp_config_file, mock_result):
                 
                 # Verify CLI executed successfully
                 assert result.exit_code == 0
+
+def test_api_key_loading_priority():
+    """Test API key loading priority (env var > config file)."""
+    # Mock environment with API key
+    test_env_key = "test_env_api_key"
+    
+    # Test 1: Environment variable takes precedence
+    with patch.dict(os.environ, {"PERPLEXITY_API_KEY": test_env_key}):
+        # Import the function directly to use the patched environment
+        from askp.cli import load_api_key
+        
+        # Mock Path.exists and Path.read_text to avoid file system operations
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch('pathlib.Path.read_text', return_value='PERPLEXITY_API_KEY=file_key'):
+                # Call load_api_key
+                key = load_api_key()
+                # Verify environment variable takes precedence
+                assert key == test_env_key, "Environment variable API key should take precedence"
+    
+    # Test 2: File is used when no environment variable
+    with patch.dict(os.environ, {}, clear=True):  # Clear all environment variables
+        # Mock Path.exists and Path.read_text to simulate config file
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch('pathlib.Path.read_text', return_value='PERPLEXITY_API_KEY=file_key'):
+                # Import the function again to use the new patched environment
+                from importlib import reload
+                import askp.cli
+                reload(askp.cli)
+                from askp.cli import load_api_key
+                
+                # Call load_api_key
+                key = load_api_key()
+                # Verify file key is used
+                assert key == 'file_key', "File API key should be used when no environment variable"
+    
+    # Test 3: Error handling when no key is available
+    with patch.dict(os.environ, {}, clear=True):  # Clear all environment variables
+        # Mock Path.exists to simulate no config file
+        with patch('pathlib.Path.exists', return_value=False):
+            # Import the function again with the new patches
+            reload(askp.cli)
+            from askp.cli import load_api_key
+            
+            # Mock sys.exit to prevent actual exit
+            with patch('sys.exit') as mock_exit:
+                # Call load_api_key
+                load_api_key()
+                # Verify sys.exit was called
+                mock_exit.assert_called_once_with(1)

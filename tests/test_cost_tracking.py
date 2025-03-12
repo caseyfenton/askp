@@ -57,12 +57,9 @@ def test_format_date_range():
 
 def test_estimate_token_count():
     """Test token count estimation."""
-    # Simple text
     assert estimate_token_count("Hello world") > 0
-    
-    # Code-like text
     code = "def test(): return x + y"
-    assert estimate_token_count(code) > len(code) / 4  # More tokens due to symbols
+    assert estimate_token_count(code) > len(code) / 4
 
 def test_detect_model():
     """Test model detection."""
@@ -71,17 +68,11 @@ def test_detect_model():
 
 def test_get_project_from_path():
     """Test project detection from paths."""
-    # Test with .working_directory
     tmp_dir = Path("/tmp/test-project")
     tmp_dir.mkdir(parents=True, exist_ok=True)
     wd_file = tmp_dir / ".working_directory"
     wd_file.write_text("test-project")
-    
     assert get_project_from_path(str(tmp_dir)) == "test-project"
-    
-    # Test with standard path structure
     assert get_project_from_path("/projects/my-project/src") == "my-project"
     assert get_project_from_path("/cascadeprojects/test/src") == "test"
-    
-    # Test with unknown path
     assert get_project_from_path("/tmp/random/path") is None

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Model definitions and capabilities for ASKP."""
-
 from typing import Dict
 
 # Model registry with costs and capabilities

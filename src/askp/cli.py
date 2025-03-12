@@ -134,10 +134,17 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
             log_query_cost(str(uuid.uuid4()), model_info, total, os.path.basename(os.getcwd()))
         except Exception as e:
             rprint(f"[yellow]Warning: Failed to log query cost: {e}[/yellow]")
+            
+        # Extract citations from response if available
+        citations = []
+        resp_dict = resp.model_dump()
+        if "citations" in resp_dict and isinstance(resp_dict["citations"], list):
+            citations = resp_dict["citations"]
+            
         return {
             "query": q,
             "results": [{"content": content}],
-            "citations": [],
+            "citations": citations,  # Use extracted citations instead of empty list
             "model": m,
             "tokens": total,
             "bytes": ib + ob,
@@ -512,7 +519,9 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         combined = [json.loads(format_json(r)) for r in results if r]
         if is_deep:
             combined.insert(0, {"research_overview": overview})
-        out = json.dumps({"combined_result": combined}, indent=2)
+        with open(out_fp, 'w') as f:
+            json.dump({"combined_result": combined}, f, ensure_ascii=False)
+        out = json.dumps({"combined_result": combined}, ensure_ascii=False)
     elif fmt == "markdown":
         if is_deep:
             qdisp = overview if isinstance(overview, str) else " ".join(overview)
@@ -557,6 +566,8 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
             tot_toks = sum(r.get("tokens", 0) for r in results if r)
             tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
             out += "=== Summary ===\n\n" + f"Totals | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f}\n\nResults: {out_fp}\n"
+    if opts.get("output") == '-':
+        sys.stdout = sys.stderr
     with open(out_fp, "w", encoding="utf-8") as f:
         f.write(out)
     if not opts.get("quiet", False) and (len(results) == 1 or opts.get("verbose", False)):

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Utility functions for ASKP."""
-
 from typing import Optional
 
 def detect_model(text: str, filename: Optional[str] = None) -> str:
@@ -14,8 +13,6 @@ def detect_model(text: str, filename: Optional[str] = None) -> str:
         Model ID string
     """
     text = text.lower()
-    
-    # Check for specific model mentions in text
     if "sonar-pro" in text:
         return "sonar-pro"
     elif "pplx-api" in text:
@@ -24,8 +21,6 @@ def detect_model(text: str, filename: Optional[str] = None) -> str:
         return "gpt4"
     elif "claude-3.5" in text:
         return "claude"
-    
-    # Check filename if provided
     if filename:
         filename = filename.lower()
         if "sonar-pro" in filename:
@@ -36,6 +31,4 @@ def detect_model(text: str, filename: Optional[str] = None) -> str:
             return "gpt4"
         elif "claude-3.5" in filename or "claude" in filename:
             return "claude"
-    
-    # Default to standard sonar model
     return "sonar"
