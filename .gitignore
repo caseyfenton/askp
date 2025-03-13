@@ -45,3 +45,16 @@ ENV/
 .DS_Store
 perplexity_full_response.json
 *.log
+*.backup
+*.diff
+*.patch
+*.enhanced
+perplexity_results/
+multi_query_results_*
+tests/test_logs/
+src/askp/cli_modifications.py
+src/askp/modify_cli*.py
+src/askp/enhance_cli.py
+src/askp/complete_cli_mod.py
+src/askp/*implementation*.md
+*.code-workspace
