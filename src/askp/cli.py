@@ -14,7 +14,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 import click
 from rich import print as rprint
@@ -24,9 +24,10 @@ from openai import OpenAI
 
 from .cost_tracking import log_query_cost
 from .tips import get_formatted_tip
+from .file_utils import get_file_stats, generate_cat_commands
 
 console = Console()
-VERSION = "2.4.1"
+VERSION = "2.4.2"
 
 
 def sanitize_filename(q: str) -> str:
@@ -488,93 +489,162 @@ def output_result(res: dict, opts: dict) -> None:
             rprint(tip)
 
 
-def output_multi_results(results: List[dict], opts: dict) -> None:
+def output_multi_results(results: List[dict], opts: dict) -> str:
     """Combine and output results from multiple queries to a file.
 
     Args:
         results: List of result dictionaries.
         opts: Options dictionary.
+        
+    Returns:
+        Path to the output file or empty string if no results.
     """
     if not results:
-        return
+        return ""
+    
+    # Get expanded queries info if available
+    expanded_info = ""
+    if opts.get("expand", 0) > 0 and opts.get("original_queries") and opts.get("expanded_queries"):
+        orig_count = len(opts.get("original_queries", []))
+        expanded_count = len(opts.get("expanded_queries", [])) - orig_count
+        if expanded_count > 0:
+            expanded_info = f"_expanded_{expanded_count}"
+    
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
     out_dir = opts.get("output_dir", os.path.join(os.getcwd(), "perplexity_results"))
     os.makedirs(out_dir, exist_ok=True)
     is_deep = opts.get("deep", False)
     overview = opts.get("research_overview", "")
     if isinstance(overview, (tuple, list)):
         overview = " ".join(str(x) for x in overview)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     fmt = opts.get("format", "markdown")
     ext = "md" if fmt == "markdown" else ("json" if fmt == "json" else "txt")
     if is_deep:
-        s_query = re.sub(r"[^\w\s-]", "", overview).strip().replace(" ", "_")[:30]
-        fname = f"deep_research_{s_query}_{ts}.{ext}"
-    elif len(results) == 1:
-        s_query = re.sub(r"[^\w\s-]", "", results[0].get("query", "")).strip().replace(" ", "_")[:30]
-        fname = f"query_result_{s_query}_{ts}.{ext}"
+        s_query = "_".join(opts.get("query", "").split()[:1]) if len(opts.get("query", "").split()) >= 1 else "unknown"
+        s_query = re.sub(r'[^a-zA-Z0-9]', '_', s_query)[:30]
+        fname = f"deep_research_{s_query}{expanded_info}_{ts}.{ext}"
+    elif len(opts.get("query", "").split()) == 1:
+        s_query = re.sub(r'[^a-zA-Z0-9]', '_', opts.get("query", "")[:30])
+        fname = f"query_result_{s_query}{expanded_info}_{ts}.{ext}"
     else:
-        fname = f"multi_query_results_{ts}.{ext}"
-    out_fp = os.path.join(out_dir, fname)
+        fname = f"multi_query_results{expanded_info}_{ts}.{ext}"
+    
     if fmt == "json":
         combined = [json.loads(format_json(r)) for r in results if r]
         if is_deep:
             combined.insert(0, {"research_overview": overview})
-        with open(out_fp, 'w') as f:
+        with open(os.path.join(out_dir, fname), 'w') as f:
             json.dump({"combined_result": combined}, f, ensure_ascii=False)
         out = json.dumps({"combined_result": combined}, ensure_ascii=False)
     elif fmt == "markdown":
-        if is_deep:
-            qdisp = overview if isinstance(overview, str) else " ".join(overview)
-            out = f"# Deep Research: {qdisp}\n\n## Research Overview\n\n{qdisp}\n\n## Research Findings\n\n"
-            for i, r in enumerate(results):
-                if r:
-                    out += f"### {i+1}. {r.get('query', 'Section '+str(i+1))}\n\n" + format_markdown(r) + "\n\n" + "-" * 50 + "\n\n"
-            tot_toks = sum(r.get("tokens", 0) for r in results if r)
-            tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
-            qps = results[0].get("metadata", {}).get("queries_per_second", 0) if results else 0
-            et = results[0].get("metadata", {}).get("elapsed_time", 0) if results else 0
-            out += f"\n## Summary\n\nTotals | Model: {opts.get('model', 'sonar-pro')} | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f} | {et:.1f}s ({qps:.2f} q/s)\n\nResults: {out_fp}\n"
-        else:
-            out = "# Multiple Query Results\n\n" if len(results) > 1 else "# Single Query Result\n\n"
-            for i, r in enumerate(results):
-                if r:
-                    qdisp = r.get("query", "Query " + str(i + 1))
-                    qdisp = qdisp if len(qdisp) <= 50 else qdisp[:50] + "..."
-                    out += f"## Query {i+1}: {qdisp}\n\n" + format_markdown(r) + "\n\n" + "-" * 50 + "\n\n"
-            tot_toks = sum(r.get("tokens", 0) for r in results if r)
-            tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
-            out += f"\n## Summary\n\nTotals | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f}\n\nResults: {out_fp}\n"
+        out = "# Multiple Query Results\n\n" if len(results) > 1 else "# Single Query Result\n\n"
+        
+        # If expanded queries were used, show them
+        if opts.get("expand", 0) > 0 and opts.get("original_queries") and opts.get("expanded_queries"):
+            orig_queries = opts.get("original_queries", [])
+            all_queries = opts.get("expanded_queries", [])
+            
+            out += "## Query Expansion\n"
+            out += f"* **Original Queries ({len(orig_queries)})**: "
+            out += ", ".join(f'"{q}"' for q in orig_queries) + "\n"
+            
+            if len(all_queries) > len(orig_queries):
+                expanded = all_queries[len(orig_queries):]
+                out += f"* **Expanded Queries ({len(expanded)})**: "
+                out += ", ".join(f'"{q}"' for q in expanded) + "\n\n"
+        
+        for i, r in enumerate(results):
+            if r:
+                qdisp = r.get("query", "Query " + str(i + 1))
+                qdisp = qdisp if len(qdisp) <= 50 else qdisp[:50] + "..."
+                out += f"## Query {i+1}: {qdisp}\n\n" + format_markdown(r) + "\n\n" + "-" * 50 + "\n\n"
+        tot_toks = sum(r.get("tokens", 0) for r in results if r)
+        tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
+        out += f"\n## Summary\n\nTotals | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f}\n\nResults: {os.path.join(out_dir, fname)}\n"
     else:
-        if is_deep:
-            qdisp = overview if isinstance(overview, str) else " ".join(overview)
-            out = f"=== Deep Research: {qdisp} ===\n\n=== Research Overview ===\n\n{qdisp}\n\n=== Research Findings ===\n\n"
-            for i, r in enumerate(results):
-                if r:
-                    out += f"=== {i+1}. {r.get('query', 'Section ' + str(i+1))} ===\n\n" + format_text(r) + "\n\n" + "=" * 50 + "\n\n"
-            tot_toks = sum(r.get("tokens", 0) for r in results if r)
-            tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
-            qps = results[0].get("metadata", {}).get("queries_per_second", 0) if results else 0
-            et = results[0].get("metadata", {}).get("elapsed_time", 0) if results else 0
-            out += "=== Summary ===\n\n" + f"Totals | Model: {opts.get('model', 'sonar-pro')} | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f} | {et:.1f}s ({qps:.2f} q/s)\n\nResults: {out_fp}\n"
-        else:
-            out = "=== Multi-Query Results ===\n\n" if len(results) > 1 else "=== Single Query Result ===\n\n"
-            for i, r in enumerate(results):
-                if r:
-                    qdisp = r.get("query", "Query " + str(i + 1))
-                    qdisp = qdisp if len(qdisp) <= 50 else qdisp[:50] + "..."
-                    out += f"=== Query {i+1}: {qdisp} ===\n\n" + format_text(r) + "\n\n" + "=" * 50 + "\n\n"
-            tot_toks = sum(r.get("tokens", 0) for r in results if r)
-            tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
-            out += "=== Summary ===\n\n" + f"Totals | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f}\n\nResults: {out_fp}\n"
+        out = "=== Multi-Query Results ===\n\n" if len(results) > 1 else "=== Single Query Result ===\n\n"
+        
+        # If expanded queries were used, show them
+        if opts.get("expand", 0) > 0 and opts.get("original_queries") and opts.get("expanded_queries"):
+            orig_queries = opts.get("original_queries", [])
+            all_queries = opts.get("expanded_queries", [])
+            
+            out += "=== Query Expansion ===\n"
+            out += f"Original Queries ({len(orig_queries)}): "
+            out += ", ".join(f'"{q}"' for q in orig_queries) + "\n"
+            
+            if len(all_queries) > len(orig_queries):
+                expanded = all_queries[len(orig_queries):]
+                out += f"Expanded Queries ({len(expanded)}): "
+                out += ", ".join(f'"{q}"' for q in expanded) + "\n\n"
+        
+        for i, r in enumerate(results):
+            if r:
+                qdisp = r.get("query", "Query " + str(i + 1))
+                qdisp = qdisp if len(qdisp) <= 50 else qdisp[:50] + "..."
+                out += f"=== Query {i+1}: {qdisp} ===\n\n" + format_text(r) + "\n\n" + "=" * 50 + "\n\n"
+        tot_toks = sum(r.get("tokens", 0) for r in results if r)
+        tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
+        out += "=== Summary ===\n\n" + f"Totals | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f}\n\nResults: {os.path.join(out_dir, fname)}\n"
+    
+    # Enforce max line length of 400 characters
+    processed_lines = []
+    for line in out.split('\n'):
+        while len(line) > 400:
+            # Find a space to break at near the 400 character mark
+            break_point = line[:400].rfind(' ')
+            if break_point == -1:  # No space found, hard break
+                break_point = 399
+            processed_lines.append(line[:break_point])
+            line = line[break_point:].lstrip()
+        processed_lines.append(line)
+    
+    out = '\n'.join(processed_lines)
+    
     if opts.get("output") == '-':
         sys.stdout = sys.stderr
+    
+    # Write the output to a file
+    if opts.get("output") and opts.get("output") != '-':
+        out_fp = opts.get("output")
+    else:
+        if not os.path.exists(opts.get("dir", ".")):
+            os.makedirs(opts.get("dir", "."))
+        out_fp = os.path.join(opts.get("dir", "."), fname)
+    
     with open(out_fp, "w", encoding="utf-8") as f:
         f.write(out)
-    if not opts.get("quiet", False) and (len(results) == 1 or opts.get("verbose", False)):
-        if fmt == "markdown":
-            console.print(Markdown(out))
+    
+    # Get file stats
+    file_size, line_count = get_file_stats(out_fp)
+    cat_commands = generate_cat_commands(out_fp, line_count)
+    
+    # Add file statistics and viewing commands
+    file_stats = f"\n=== File Information ===\n"
+    file_stats += f"Location: {out_fp}\n"
+    file_stats += f"Size: {file_size:,} bytes | Lines: {line_count:,}\n"
+    file_stats += f"\n=== Viewing Commands ===\n"
+    for i, cmd in enumerate(cat_commands):
+        if len(cat_commands) > 1:
+            file_stats += f"Part {i+1}/{len(cat_commands)}: {cmd}\n"
         else:
-            click.echo(out)
+            file_stats += f"View all: {cmd}\n"
+    
+    # Append to file
+    with open(out_fp, "a", encoding="utf-8") as f:
+        f.write(file_stats)
+    
+    # Update output with file stats
+    out += file_stats
+    
+    # Display file statistics on console
+    rprint(f"[blue]File saved: {out_fp}[/blue]")
+    rprint(f"[blue]Size: {file_size:,} bytes | Lines: {line_count:,}[/blue]")
+    rprint(f"[blue]Viewing command{'s' if len(cat_commands) > 1 else ''}:[/blue]")
+    for cmd in cat_commands:
+        rprint(f"[green]{cmd}[/green]")
+    
     return out_fp
 
 
@@ -645,6 +715,8 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, temperat
     }
     if expand:
         opts["expand"] = expand
+        # Save original queries for reference
+        opts["original_queries"] = queries.copy()
     if deep:
         if not quiet:
             rprint("[blue]Deep research mode enabled. Generating research plan...[/blue]")
@@ -669,6 +741,13 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, temperat
         rprint(f"[blue]Expanding {len(queries)} queries to {expand} total queries...[/blue]")
         from .expand import generate_expanded_queries
         queries = generate_expanded_queries(queries, expand, model=model, temperature=temperature)
+        # Store expanded queries for reference
+        opts["expanded_queries"] = queries
+        res = handle_multi_query(queries, opts)
+        if not res:
+            rprint("[red]Error: Failed to process queries[/red]")
+            sys.exit(1)
+        output_multi_results(res, opts)
     elif not single or file or len(queries) > 1:
         res = handle_multi_query(queries, opts)
         if not res:
