@@ -26,11 +26,18 @@ def generate_expanded_queries(
     """
     if total_queries <= len(original_queries):
         return original_queries
+    
     num_new_queries = total_queries - len(original_queries)
+    rprint(f"[blue]Starting with {len(original_queries)} original queries:[/blue]")
+    for i, query in enumerate(original_queries):
+        rprint(f"[green]  Original {i+1}: [bold]{query}[/bold][/green]")
+    
     try:
         api_key = load_api_key()
         client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
         prompt = _create_expansion_prompt(original_queries, num_new_queries)
+        
+        rprint(f"[blue]Generating {num_new_queries} additional queries...[/blue]")
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -56,15 +63,21 @@ def generate_expanded_queries(
                             new_queries.append(query)
             valid_new_queries = [query.strip() for query in new_queries if isinstance(query, str) and query.strip() and query not in original_queries]
             valid_new_queries = valid_new_queries[:num_new_queries]
-            all_queries = original_queries + valid_new_queries
+            
+            # Display new queries
             if valid_new_queries:
-                rprint(f"[green]Generated {len(valid_new_queries)} additional queries.[/green]")
+                rprint(f"[green]Generated {len(valid_new_queries)} additional queries:[/green]")
+                for i, query in enumerate(valid_new_queries):
+                    rprint(f"[cyan]  Expanded {i+1}: [bold]{query}[/bold][/cyan]")
             else:
                 rprint("[yellow]Warning: Could not generate additional queries. Using original queries.[/yellow]")
+            
+            all_queries = original_queries + valid_new_queries
             if len(all_queries) == 1:
                 rprint("[blue]Single detailed search mode activated.[/blue]")
             else:
                 rprint("[blue]Multi-query search mode activated with detailed output.[/blue]")
+                rprint(f"[blue]Total {len(all_queries)} queries will be processed.[/blue]")
             return all_queries
         except json.JSONDecodeError:
             rprint("[yellow]Warning: Could not parse expanded queries response as JSON. Using original queries.[/yellow]")
