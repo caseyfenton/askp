@@ -25,7 +25,7 @@ from openai import OpenAI
 from rich.panel import Panel
 from .cost_tracking import log_query_cost
 from .tips import get_formatted_tip
-from .file_utils import get_file_stats, generate_cat_commands
+from .file_utils import get_file_stats, generate_cat_commands, format_path
 
 console = Console()
 VERSION = "2.4.1"
@@ -589,7 +589,7 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         
     # Get file stats
     file_size, line_count = get_file_stats(out_fp)
-    cat_commands = generate_cat_commands(out_fp, line_count)
+    cat_commands = generate_cat_commands([out_fp])
     
     # Add file statistics and viewing commands
     file_stats = f"\n=== File Information ===\n"
@@ -625,7 +625,7 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
 @click.option("--format", "-f", type=click.Choice(["text", "json", "markdown"]), default="markdown", help="Output format")
 @click.option("--output", "-o", type=click.Path(), help="Save output to file")
 @click.option("--num-results", "-n", type=int, default=5, help="Number of results to return from Perplexity")
-@click.option("--model", default="sonar-pro", help="Model to use (default: sonar-pro)")
+@click.option("--model", default="sonar", help="Model to use (default: sonar)")
 @click.option("--temperature", type=float, default=0.7, help="Temperature (0.0-1.0)")
 @click.option("--token-max", "-t", type=int, default=8192, help="Maximum tokens to use")
 @click.option("--reasoning", "-r", is_flag=True, help="Use reasoning model ($5.00 per million tokens)")

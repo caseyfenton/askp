@@ -1,8 +1,35 @@
 #!/usr/bin/env python3
 """File utilities for ASKP CLI."""
 import os
+from pathlib import Path
 from typing import Tuple, List
 from rich import print as rprint
+
+def format_path(filepath: str) -> str:
+    """Format a file path to use tilde notation.
+    
+    Replaces the user's home directory with a tilde (~) followed by the project path.
+    Example: /Users/username/CascadeProjects/askp/file.txt -> ~/askp/file.txt
+    
+    Args:
+        filepath: The full file path
+        
+    Returns:
+        Formatted path with tilde notation
+    """
+    home = str(Path.home())
+    if filepath.startswith(home):
+        # Extract the project name from the path after CascadeProjects
+        rel_path = filepath[len(home):]
+        if '/CascadeProjects/' in filepath:
+            parts = rel_path.split('/CascadeProjects/', 1)
+            if len(parts) > 1:
+                project_parts = parts[1].split('/', 1)
+                if len(project_parts) > 1:
+                    return f"~/{project_parts[0]}/{project_parts[1]}"
+                return f"~/{project_parts[0]}"
+        return "~" + rel_path
+    return filepath
 
 def get_file_stats(filepath: str) -> Tuple[int, int]:
     """Get file statistics (size in bytes and line count).
@@ -11,36 +38,30 @@ def get_file_stats(filepath: str) -> Tuple[int, int]:
         filepath: Path to the file
         
     Returns:
-        Tuple of (size_bytes, line_count)
+        Tuple of (size_in_bytes, line_count)
     """
+    if not os.path.exists(filepath):
+        return (0, 0)
     try:
-        size_bytes = os.path.getsize(filepath)
-        with open(filepath, 'r', encoding='utf-8') as f:
-            line_count = sum(1 for _ in f)
-        return size_bytes, line_count
+        size = os.path.getsize(filepath)
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            lines = sum(1 for _ in f)
+        return (size, lines)
     except Exception as e:
-        rprint(f"[yellow]Warning: Could not get file stats for {filepath}: {e}[/yellow]")
-        return 0, 0
+        rprint(f"[yellow]Warning: Could not get stats for {filepath}: {e}[/yellow]")
+        return (0, 0)
 
-def generate_cat_commands(filepath: str, line_count: int, max_lines_per_cmd: int = 200) -> List[str]:
-    """Generate efficient cat commands to view a file in chunks if needed.
+def generate_cat_commands(files: List[str]) -> List[str]:
+    """Generate cat commands for a list of files.
     
     Args:
-        filepath: Path to the file
-        line_count: Total number of lines in the file
-        max_lines_per_cmd: Maximum lines to show per command
+        files: List of file paths
         
     Returns:
-        List of cat commands to view the file
+        List of cat commands
     """
-    if line_count <= max_lines_per_cmd:
-        return [f"cat {filepath}"]
-    
     commands = []
-    start_line = 1
-    while start_line <= line_count:
-        end_line = min(start_line + max_lines_per_cmd - 1, line_count)
-        commands.append(f"cat {filepath} | sed -n '{start_line},{end_line}p'")
-        start_line += max_lines_per_cmd
-    
+    for f in files:
+        if os.path.exists(f):
+            commands.append(f"cat {f}")
     return commands
