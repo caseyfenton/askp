@@ -173,6 +173,7 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
                 "cost": estimate_cost(total, model_info),
                 "num_results": 1,
                 "verbose": opts.get("verbose", False),
+                "format": opts.get("format", "markdown"),  # Include format in metadata
             },
             "model_info": model_info,
             "tokens_used": total,
@@ -194,7 +195,7 @@ def get_output_dir() -> str:
 
 
 def save_result_file(q: str, res: dict, i: int, out_dir: str) -> str:
-    """Save query result to a JSON file.
+    """Save query result to a file (Markdown by default, JSON if specified).
 
     Args:
         q: The query string.
@@ -206,10 +207,26 @@ def save_result_file(q: str, res: dict, i: int, out_dir: str) -> str:
         File path of the saved result.
     """
     os.makedirs(out_dir, exist_ok=True)
-    fname = f"{i:03d}_{sanitize_filename(q)[:50]}.json"
-    fpath = os.path.join(out_dir, fname)
-    with open(fpath, "w", encoding="utf-8") as f:
-        json.dump(res, f, indent=2)
+    
+    # Check if format is explicitly set to JSON in the result's metadata
+    use_json = res.get("metadata", {}).get("format", "markdown") == "json"
+    
+    if use_json:
+        # Save as JSON if explicitly requested
+        fname = f"{i:03d}_{sanitize_filename(q)[:50]}.json"
+        fpath = os.path.join(out_dir, fname)
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(res, f, indent=2)
+    else:
+        # Default to Markdown
+        fname = f"{i:03d}_{sanitize_filename(q)[:50]}.md"
+        fpath = os.path.join(out_dir, fname)
+        
+        # Convert result to markdown format
+        content = format_markdown(res)
+        with open(fpath, "w", encoding="utf-8") as f:
+            f.write(content)
+            
     return fpath
 
 
