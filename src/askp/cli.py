@@ -126,9 +126,22 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
         resp = client.chat.completions.create(
             model=m, messages=messages, temperature=temp, max_tokens=max_tokens, stream=False
         )
-        content = resp.choices[0].message.content
-        ob = len(content.encode("utf-8"))
-        total = resp.usage.total_tokens
+        
+        # Check if resp is a string (error case) or an object with expected attributes
+        if isinstance(resp, str):
+            rprint(f"[red]Error: Unexpected string response from API: {resp}[/red]")
+            return None
+            
+        # Safely access the content
+        try:
+            content = resp.choices[0].message.content
+            ob = len(content.encode("utf-8"))
+            total = resp.usage.total_tokens
+        except (AttributeError, IndexError) as e:
+            rprint(f"[red]Error accessing response data: {e}[/red]")
+            rprint(f"[yellow]Response type: {type(resp)}[/yellow]")
+            return None
+            
         if not opts.get("suppress_model_display", False):
             disp = model_info["model"] + (" (reasoning)" if reasoning or pro_reasoning else "")
             print(f"[{disp} | Temp: {temp}]")
@@ -139,9 +152,13 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
             
         # Extract citations from response if available
         citations = []
-        resp_dict = resp.model_dump()
-        if "citations" in resp_dict and isinstance(resp_dict["citations"], list):
-            citations = resp_dict["citations"]
+        try:
+            resp_dict = resp.model_dump()
+            if "citations" in resp_dict and isinstance(resp_dict["citations"], list):
+                citations = resp_dict["citations"]
+        except AttributeError:
+            # model_dump might not be available in some versions
+            pass
             
         return {
             "query": q,
