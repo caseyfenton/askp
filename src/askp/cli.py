@@ -493,7 +493,7 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     if not opts.get("deep", False):
         print("\nDONE!")
         rel_od = format_path(od)
-        print(f"OUTPUT FILES: {rel_od}")
+        print(f"Output file: {rel_od}" if len(results) == 1 else f"Output files: {rel_od}")
         print(f"Queries: {len(results)}/{len(queries)}")
         total_bytes = 0
         for r in results:
@@ -535,7 +535,7 @@ def format_markdown(res: dict) -> str:
     Returns:
         Markdown formatted string.
     """
-    parts = ["# Search Results\n"]
+    parts = []
     meta = res.get("metadata", {})
     if meta.get("verbose", False):
         parts += [
@@ -570,7 +570,7 @@ def format_text(res: dict) -> str:
     Returns:
         Plain text formatted string.
     """
-    parts = ["=== Search Results ==="]
+    parts = []
     meta = res.get("metadata", {})
     if meta.get("verbose", False):
         parts += [
@@ -619,11 +619,11 @@ def output_result(res: dict, opts: dict) -> None:
                 rprint(f"[red]Error: Permission denied writing to {opts['output']}[/red]")
     else:
         if fmt == "markdown":
-            console.print(Markdown(out))
+            click.echo(out)
         else:
             click.echo(out)
     if not opts.get("quiet", False) and fmt != "json":
-        rprint(f"[blue]Results directory: {get_output_dir()}[/blue]")
+        rprint(f"[blue]Results saved to: {format_path(get_output_dir())}[/blue]")
     if not opts.get("quiet", False) and not opts.get("multi", False):
         tip = get_formatted_tip()
         if tip:
@@ -684,9 +684,9 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
             tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
             qps = results[0].get("metadata", {}).get("queries_per_second", 0) if results else 0
             et = results[0].get("metadata", {}).get("elapsed_time", 0) if results else 0
-            out += f"\n## Summary\n\nTotals | Model: {opts.get('model', 'sonar-pro')} | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f} | {et:.1f}s ({qps:.2f} q/s)\n\nResults: {out_fp}\n"
+            out += f"\n## Summary\n\nTotals | Model: {opts.get('model', 'sonar-pro')} | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f} | {et:.1f}s ({qps:.2f} q/s)\n\nResults saved to: {format_path(out_fp)}\n"
         else:
-            out = "# Multiple Query Results\n\n" if len(results) > 1 else "# Single Query Result\n\n"
+            out = ""
             for i, r in enumerate(results):
                 if r:
                     qdisp = r.get("query", "Query " + str(i + 1))
@@ -694,38 +694,38 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
                     out += f"## Query {i+1}: {qdisp}\n\n" + format_markdown(r) + "\n\n" + "-" * 50 + "\n\n"
             tot_toks = sum(r.get("tokens", 0) for r in results if r)
             tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
-            out += f"\n## Summary\n\nTotals | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f}\n\nResults: {out_fp}\n"
+            out += f"\n## Summary\n\nTotals | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f}\n\nResults saved to: {format_path(out_fp)}\n"
     else:
         if is_deep:
             qdisp = overview if isinstance(overview, str) else " ".join(overview)
-            out = f"=== Deep Research: {qdisp} ===\n\n=== Research Overview ===\n\n"
+            out = f"Deep Research: {qdisp}\n\nResearch Overview:\n\n"
             if results and len(results) > 0 and results[0]:
                 overview_content = results[0].get("results", [{}])[0].get("content", "")
                 if overview_content:
                     out += f"{overview_content}\n\n"
                     
-            out += "=== Research Findings ===\n\n"
+            out += "Research Findings:\n\n"
             for i, r in enumerate(results):
                 if i == 0:
                     continue
                 sec = f"Section {i}: {r.get('query', 'Section '+str(i+1))}"
                 content = r.get("results", [{}])[0].get("content", "")
-                out += f"=== {i+1}. {sec} ===\n\n" + format_text(r) + "\n\n" + "=" * 50 + "\n\n"
+                out += f"{i+1}. {sec}\n\n" + format_text(r) + "\n\n" + "-" * 50 + "\n\n"
             tot_toks = sum(r.get("tokens", 0) for r in results if r)
             tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
             qps = results[0].get("metadata", {}).get("queries_per_second", 0) if results else 0
             et = results[0].get("metadata", {}).get("elapsed_time", 0) if results else 0
-            out += "=== Summary ===\n\n" + f"Totals | Model: {opts.get('model', 'sonar-pro')} | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f} | {et:.1f}s ({qps:.2f} q/s)\n\nResults: {out_fp}\n"
+            out += "Summary:\n\n" + f"Totals | Model: {opts.get('model', 'sonar-pro')} | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f} | {et:.1f}s ({qps:.2f} q/s)\n\nResults saved to: {format_path(out_fp)}\n"
         else:
-            out = "=== Multi-Query Results ===\n\n" if len(results) > 1 else "=== Single Query Result ===\n\n"
+            out = ""
             for i, r in enumerate(results):
                 if r:
                     qdisp = r.get("query", "Query " + str(i + 1))
                     qdisp = qdisp if len(qdisp) <= 50 else qdisp[:50] + "..."
-                    out += f"=== Query {i+1}: {qdisp} ===\n\n" + format_text(r) + "\n\n" + "=" * 50 + "\n\n"
+                    out += f"Query {i+1}: {qdisp}\n\n" + format_text(r) + "\n\n" + "-" * 50 + "\n\n"
             tot_toks = sum(r.get("tokens", 0) for r in results if r)
             tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
-            out += "=== Summary ===\n\n" + f"Totals | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f}\n\nResults: {out_fp}\n"
+            out += "Summary:\n\n" + f"Totals | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f}\n\nResults saved to: {format_path(out_fp)}\n"
     if opts.get("output") == '-':
         sys.stdout = sys.stderr
     with open(out_fp, "w", encoding="utf-8") as f:
@@ -751,7 +751,7 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         
     if not opts.get("quiet", False) and (len(results) == 1 or opts.get("verbose", False)):
         if fmt == "markdown":
-            console.print(Markdown(out))
+            click.echo(out)
         else:
             click.echo(out)
     return out_fp
@@ -863,10 +863,15 @@ def suggest_cat_commands(results, output_dir):
         groups.append(current_group)
     
     # Generate and print cat commands
-    print("\nTo view results:")
-    for i, group in enumerate(groups):
-        cmd = " && ".join([f"cat {format_path(f)}" for f in group])
-        print(f"Command {i+1}: {cmd}")
+    if len(files) == 1:
+        print(f"\nFile: {format_path(files[0])} ({file_lines[files[0]]} lines)")
+        print(f"To view: cat {format_path(files[0])}")
+    else:
+        print("\nTo view files:")
+        for i, group in enumerate(groups):
+            formatted_paths = [format_path(f) for f in group]
+            cmd = " && ".join([f"cat {fp}" for fp in formatted_paths])
+            print(f"cat {' '.join(formatted_paths)}")
 
 
 def handle_deep_research(query: str, opts: dict) -> Optional[List[dict]]:

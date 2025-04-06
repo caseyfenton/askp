@@ -58,3 +58,4 @@ src/askp/enhance_cli.py
 src/askp/complete_cli_mod.py
 src/askp/*implementation*.md
 *.code-workspace
+.qodo

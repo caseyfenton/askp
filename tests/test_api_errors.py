@@ -86,7 +86,7 @@ def test_rate_limit_retry_logic():
             "results": [{"content": "Test result after retry"}],
             "model": "test-model",
             "tokens": 100,
-            "metadata": {"cost": 0.0001}
+            "metadata": {"cost": 0.0001, "format": "markdown"}
         })))]
         mock_success_response.usage = MagicMock(total_tokens=100)
         call_count = 0
@@ -108,10 +108,12 @@ def test_rate_limit_retry_logic():
         result = search_perplexity("test query", {
             "retry_on_rate_limit": True,
             "max_retries": 3,
-            "test_mode": True
+            "test_mode": True,
+            "format": "markdown"
         })
         assert result is not None
         assert "results" in result
+        assert "content" in result["results"][0]
         assert result["results"][0]["content"] == "Test result after retry"
 
 def test_malformed_api_response_handling():
