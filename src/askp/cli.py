@@ -864,13 +864,15 @@ def suggest_cat_commands(results, output_dir):
     
     # Generate and print cat commands
     if len(files) == 1:
-        print(f"\nFile: {format_path(files[0])} ({file_lines[files[0]]} lines)")
-        print(f"To view: cat {format_path(files[0])}")
+        f = files[0]
+        stats = get_file_stats(f)
+        rel_path = format_path(f)
+        print(f"\nFile: {rel_path} ({stats[1]} lines)")
+        print(f"To view: cat {rel_path}")
     else:
         print("\nTo view files:")
-        for i, group in enumerate(groups):
+        for group in groups:
             formatted_paths = [format_path(f) for f in group]
-            cmd = " && ".join([f"cat {fp}" for fp in formatted_paths])
             print(f"cat {' '.join(formatted_paths)}")
 
 
