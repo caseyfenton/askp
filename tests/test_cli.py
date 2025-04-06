@@ -78,7 +78,7 @@ def test_cli_format():
     text_out = format_text(data)
     assert "Result 1" in text_out
     md_out = format_markdown(data)
-    assert "# Search Results" in md_out
+    # The "# Search Results" header was removed as part of simplifying output format
     assert "Result 1" in md_out
 
 @patch('askp.cli.search_perplexity')

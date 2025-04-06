@@ -204,13 +204,13 @@ def test_output_multi_results_verbose_mode(mock_deep_research_results, tmp_path)
     
     # Mock open to avoid actually writing files
     with patch('builtins.open', MagicMock()):
-        # Mock rich.console.Console.print to capture output
-        with patch('rich.console.Console.print') as mock_print:
+        # Mock click.echo to capture output instead of rich.console.Console.print
+        with patch('click.echo') as mock_echo:
             # Call function
             output_multi_results(mock_deep_research_results, options)
             
-            # Verify rich output was produced
-            assert mock_print.call_count > 0
+            # Verify output was produced
+            assert mock_echo.call_count > 0
 
 def test_output_multi_results_text_format(mock_deep_research_results, tmp_path):
     """Test output formatting in text format."""
