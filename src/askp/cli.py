@@ -56,12 +56,15 @@ def load_api_key() -> str:
     key = os.environ.get("PERPLEXITY_API_KEY")
     if key:
         return key
-    for p in [Path.home() / ".env", Path.home() / " .perplexity" / ".env", Path.home() / " .askp" / ".env"]:
+        
+    for p in [Path.home() / ".env", Path.home() / ".perplexity" / ".env", Path.home() / ".askp" / ".env"]:
         if p.exists():
             try:
-                for line in p.read_text().splitlines():
+                content = p.read_text()
+                for line in content.splitlines():
                     if line.startswith("PERPLEXITY_API_KEY="):
-                        return line.split("=", 1)[1].strip().strip('"\'' )
+                        key = line.split("=", 1)[1].strip().strip('"\'' )
+                        return key
             except Exception as e:
                 rprint(f"[yellow]Warning: Error reading {p}: {e}[/yellow]")
     rprint("[red]Error: Could not find Perplexity API key.[/red]")
@@ -84,6 +87,31 @@ def get_model_info(m: str, reasoning: bool = False, pro_reasoning: bool = False)
     if pro_reasoning:
         return {"id": "pro-reasoning", "model": "sonar-reasoning-pro", "cost_per_million": 8.00, "reasoning": True}
     return {"id": m, "model": m, "cost_per_million": 1.00, "reasoning": False}
+
+
+def normalize_model_name(model: str) -> str:
+    """Normalize model name to handle case variations.
+    
+    Args:
+        model: Input model name string
+        
+    Returns:
+        Normalized model name that matches Perplexity's expected format
+    """
+    if not model:
+        return "sonar-pro"
+        
+    model = model.lower().replace("-", "").replace(" ", "")
+    mappings = {
+        "sonarpro": "sonar-pro",
+        "sonar": "sonar",
+        "sonarproreasoning": "sonar-pro-reasoning",
+        "prosonar": "sonar-pro",
+        "pro": "sonar-pro",
+        "sonarpro": "sonar-pro",
+        "sonarreasoning": "sonar-reasoning"
+    }
+    return mappings.get(model, "sonar-pro")  # Default to sonar-pro if unknown
 
 
 def estimate_cost(toks: int, model_info: dict) -> float:
@@ -120,19 +148,18 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
     m = model_info["model"]
     try:
         api_key = load_api_key()
+        if opts.get("verbose", False):
+            rprint(f"[yellow]Using API key: {api_key[:4]}...{api_key[-4:]}[/yellow]")
         client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
         messages = [{"role": "user", "content": q}]
         ib = len(q.encode("utf-8"))
         resp = client.chat.completions.create(
             model=m, messages=messages, temperature=temp, max_tokens=max_tokens, stream=False
         )
-        
-        # Check if resp is a string (error case) or an object with expected attributes
         if isinstance(resp, str):
             rprint(f"[red]Error: Unexpected string response from API: {resp}[/red]")
             return None
             
-        # Safely access the content
         try:
             content = resp.choices[0].message.content
             ob = len(content.encode("utf-8"))
@@ -150,20 +177,18 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
         except Exception as e:
             rprint(f"[yellow]Warning: Failed to log query cost: {e}[/yellow]")
             
-        # Extract citations from response if available
         citations = []
         try:
             resp_dict = resp.model_dump()
             if "citations" in resp_dict and isinstance(resp_dict["citations"], list):
                 citations = resp_dict["citations"]
         except AttributeError:
-            # model_dump might not be available in some versions
             pass
             
         return {
             "query": q,
             "results": [{"content": content}],
-            "citations": citations,  # Use extracted citations instead of empty list
+            "citations": citations,  
             "model": m,
             "tokens": total,
             "bytes": ib + ob,
@@ -173,13 +198,18 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
                 "cost": estimate_cost(total, model_info),
                 "num_results": 1,
                 "verbose": opts.get("verbose", False),
-                "format": opts.get("format", "markdown"),  # Include format in metadata
+                "format": opts.get("format", "markdown"),  
             },
             "model_info": model_info,
             "tokens_used": total,
         }
     except Exception as e:
-        rprint(f"[red]Error in search_perplexity: {e}[/red]")
+        err_str = str(e)
+        if "401" in err_str:
+            rprint("[red]Error: 401 Unauthorized - You are likely out of API credits.[/red]")
+            rprint("[yellow]Please visit https://perplexity.ai/account/api to check your balance and add more credits.[/yellow]")
+        else:
+            rprint(f"[red]Error in search_perplexity: {e}[/red]")
         return None
 
 
@@ -208,21 +238,17 @@ def save_result_file(q: str, res: dict, i: int, out_dir: str) -> str:
     """
     os.makedirs(out_dir, exist_ok=True)
     
-    # Check if format is explicitly set to JSON in the result's metadata
     use_json = res.get("metadata", {}).get("format", "markdown") == "json"
     
     if use_json:
-        # Save as JSON if explicitly requested
         fname = f"{i:03d}_{sanitize_filename(q)[:50]}.json"
         fpath = os.path.join(out_dir, fname)
         with open(fpath, "w", encoding="utf-8") as f:
             json.dump(res, f, indent=2)
     else:
-        # Default to Markdown
         fname = f"{i:03d}_{sanitize_filename(q)[:50]}.md"
         fpath = os.path.join(out_dir, fname)
         
-        # Convert result to markdown format
         content = format_markdown(res)
         with open(fpath, "w", encoding="utf-8") as f:
             f.write(content)
@@ -230,7 +256,7 @@ def save_result_file(q: str, res: dict, i: int, out_dir: str) -> str:
     return fpath
 
 
-def append_to_combined(q: str, res: dict, i: int, out_dir: str, lock: threading.Lock) -> str:
+def append_to_combined(q: str, res: dict, i: int, out_dir: str, lock: threading.Lock, opts: dict) -> str:
     """Append individual query result to a combined markdown file.
 
     Args:
@@ -239,16 +265,60 @@ def append_to_combined(q: str, res: dict, i: int, out_dir: str, lock: threading.
         i: Query index.
         out_dir: Output directory.
         lock: Threading lock to synchronize file writes.
+        opts: Options dictionary containing settings.
 
     Returns:
         File path of the combined results file.
     """
-    combined = os.path.join(out_dir, "combined_results.md")
+    if opts.get("output"):
+        combined = opts["output"]
+    else:
+        combined = os.path.join(out_dir, generate_combined_filename([q], opts))
+    
     with lock:
-        with open(combined, "a", encoding="utf-8") as f:
-            f.write(f"\n\n## Query {i+1}: {q}\n\n")
-            f.write(res["results"][0]["content"])
-            f.write("\n\n---\n\n")
+        # Read existing content and parse sections
+        sections = {}
+        toc_entries = []
+        if os.path.exists(combined):
+            try:
+                with open(combined, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    # Extract existing sections
+                    for section in re.split(r'\n---\n+', content):
+                        if section.strip():
+                            match = re.search(r'## Query (\d+): (.+?)\n', section)
+                            if match:
+                                query_num = int(match.group(1))
+                                query_text = match.group(2)
+                                sections[query_text] = section
+            except Exception:
+                pass
+        
+        # Add or update this section
+        safe_name = re.sub(r'[^\w\s-]', '', q).strip().lower().replace(" ", "-")
+        individual_file = f"query_{i+1}_{safe_name[:30]}.md"
+        
+        section = f"\n## Query {i+1}: {q}\n\n"
+        section += res["results"][0]["content"]
+        section += f"\n\n[View detailed results]({individual_file})\n"
+        sections[q] = section
+        
+        # Write the combined file
+        with open(combined, "w", encoding="utf-8") as f:
+            f.write("# Combined Research Results\n\n")
+            f.write("## Table of Contents\n\n")
+            
+            # Write table of contents
+            for idx, (query, _) in enumerate(sections.items(), 1):
+                safe_name = re.sub(r'[^\w\s-]', '', query).strip().lower().replace(" ", "-")
+                f.write(f"{idx}. [{query}](#{safe_name})\n")
+            
+            # Write sections
+            for section in sections.values():
+                f.write("\n")
+                f.write(section)
+                f.write("\n---\n")
+    
     return combined
 
 
@@ -270,11 +340,10 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
     od = get_output_dir()
     rf = save_result_file(q, res, i, od)
     if opts.get("combine") and lock:
-        cf = append_to_combined(q, res, i, od, lock)
+        cf = append_to_combined(q, res, i, od, lock, opts)
         rprint(f"[green]Combined results saved to {cf}[/green]")
     if opts.get("suppress_model_display", False):
         t = q[:40] + "..." if len(q) > 40 else q
-        # Fix to correctly access content in the nested structure
         if "results" in res and res["results"]:
             bytes_count = len(res["results"][0].get("content", ""))
         else:
@@ -284,7 +353,7 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
     return res
 
 
-def handle_multi_query(queries: List[str], opts: dict) -> List[dict]:
+def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     """Process multiple queries in parallel.
 
     Args:
@@ -298,11 +367,19 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[dict]:
     mi = get_model_info(opts.get("model", "sonar-pro"), opts.get("reasoning", False), opts.get("pro_reasoning", False))
     print(f"Model: {mi['model']}{' (reasoning)' if mi.get('reasoning', False) else ''} | Temp: {opts.get('temperature', 0.7)}")
     opts["suppress_model_display"] = True
-    lock = threading.Lock()
-    results: List[dict] = []
+    
+    results: List[Optional[dict]] = []
     total_tokens = 0
     total_cost = 0
     start = time.time()
+    lock = threading.Lock()
+    
+    # Pre-generate combined filename if needed
+    if opts.get("combine"):
+        od = get_output_dir()
+        if not opts.get("output"):
+            opts["output"] = os.path.join(od, generate_combined_filename(queries, opts))
+    
     max_workers = opts.get("max_parallel", 10)
     with ThreadPoolExecutor(max_workers=min(max_workers, len(queries))) as ex:
         futures = {ex.submit(execute_query, q, i, opts, lock): i for i, q in enumerate(queries)}
@@ -315,9 +392,11 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[dict]:
                     total_cost += r["metadata"].get("cost", 0)
             except Exception as e:
                 rprint(f"[red]Error in future: {e}[/red]")
+                
     elapsed = time.time() - start
     qps = len(results) / elapsed if elapsed > 0 else 0
     od = get_output_dir()
+    
     if opts.get("deep", False) and len(results) > 1:
         try:
             if opts.get("verbose", False):
@@ -332,7 +411,7 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[dict]:
                 sections[sec] = content
             orig = opts.get("research_overview", results[0]["query"])
             if isinstance(orig, tuple):
-                orig = " ".join(orig)
+                orig = " ".join(str(x) for x in orig)
             synthesis = synthesize_research(query=orig, results=sections, options=opts)
             intro_text = synthesis.get("introduction", "")
             concl_text = synthesis.get("conclusion", "")
@@ -367,6 +446,7 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[dict]:
         except Exception as e:
             if opts.get("verbose", False):
                 rprint(f"[yellow]Warning: Failed to synthesize research: {e}[/yellow]")
+                
     if not opts.get("deep", False):
         print("\nProcessing complete!")
         if len(results) == 1:
@@ -374,52 +454,20 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[dict]:
         else:
             print(f"Results: {od}")
         print(f"Queries: {len(results)}/{len(queries)}")
-        # Calculate total bytes - safely handle nested content structure
         total_bytes = 0
         for r in results:
             if not r:
                 continue
-            # Handle nested results structure
             if "results" in r and r["results"]:
                 content_bytes = len(r["results"][0].get("content", ""))
             else:
                 content_bytes = len(r.get("content", ""))
             total_bytes += content_bytes
         print(f"Totals | {total_bytes:,} bytes | {total_tokens:,} tokens | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.2f} q/s)")
+        
     if results:
         results[0]["metadata"].update({"queries_per_second": qps, "elapsed_time": elapsed, "output_dir": od})
     return results
-
-
-def handle_deep_research(query: str, opts: dict) -> Optional[List[dict]]:
-    """Handle deep research mode by generating and processing a research plan.
-
-    Args:
-        query: The main research query.
-        opts: Options dictionary.
-
-    Returns:
-        A list of result dictionaries or None if an error occurs.
-    """
-    from .deep_research import generate_research_plan, process_research_plan
-    plan = generate_research_plan(query, model=opts.get("model", "sonar-pro"), temperature=opts.get("temperature", 0.7), options=opts)
-    if not plan:
-        rprint("[red]Error: Failed to generate research plan[/red]")
-        return None
-    opts["deep"] = True
-    opts["query"] = query
-    res = process_research_plan(plan, opts)
-    if res:
-        for r in res:
-            if r and "metadata" in r and "file_path" not in r.get("metadata", {}):
-                if "components_dir" in opts and "query" in r:
-                    s = re.sub(r"[^\w\s-]", "", r["query"]).strip().replace(" ", "_")[:30]
-                    idx = res.index(r)
-                    fname = f"{idx:03d}_{s}.json"
-                    fpath = os.path.join(opts["components_dir"], fname)
-                    if os.path.exists(fpath):
-                        r["metadata"]["file_path"] = fpath
-    return res
 
 
 def format_json(res: dict) -> str:
@@ -575,7 +623,7 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     elif fmt == "markdown":
         if is_deep:
             qdisp = overview if isinstance(overview, str) else " ".join(overview)
-            out = f"# Deep Research: {qdisp}\n\n## Research Overview\n\n{qdisp}\n\n## Research Findings\n\n"
+            out = f"# Deep Research: {qdisp}\n\n## Research Findings\n\n"
             for i, r in enumerate(results):
                 if r:
                     out += f"### {i+1}. {r.get('query', 'Section '+str(i+1))}\n\n" + format_markdown(r) + "\n\n" + "-" * 50 + "\n\n"
@@ -597,7 +645,7 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     else:
         if is_deep:
             qdisp = overview if isinstance(overview, str) else " ".join(overview)
-            out = f"=== Deep Research: {qdisp} ===\n\n=== Research Overview ===\n\n{qdisp}\n\n=== Research Findings ===\n\n"
+            out = f"=== Deep Research: {qdisp} ===\n\n=== Research Findings ===\n\n"
             for i, r in enumerate(results):
                 if r:
                     out += f"=== {i+1}. {r.get('query', 'Section ' + str(i+1))} ===\n\n" + format_text(r) + "\n\n" + "=" * 50 + "\n\n"
@@ -621,11 +669,9 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     with open(out_fp, "w", encoding="utf-8") as f:
         f.write(out)
         
-    # Get file stats
     file_size, line_count = get_file_stats(out_fp)
     cat_commands = generate_cat_commands([out_fp])
     
-    # Add file statistics and viewing commands
     file_stats = f"\n=== File Information ===\n"
     file_stats += f"Location: {out_fp}\n"
     file_stats += f"Size: {file_size:,} bytes | Lines: {line_count:,}\n"
@@ -636,11 +682,9 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         else:
             file_stats += f"View all: {cmd}\n"
     
-    # Append to file
     with open(out_fp, "a", encoding="utf-8") as f:
         f.write(file_stats)
     
-    # Update output with file stats
     out += file_stats
         
     if not opts.get("quiet", False) and (len(results) == 1 or opts.get("verbose", False)):
@@ -651,13 +695,55 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     return out_fp
 
 
+def generate_combined_filename(queries: List[str], opts: dict) -> str:
+    """Generate a descriptive combined file name.
+    
+    Args:
+        queries: List of query strings to summarize
+        opts: Options dictionary with settings
+        
+    Returns:
+        A descriptive filename for the combined results
+    """
+    if opts.get("output"):
+        return os.path.basename(opts["output"])
+        
+    # If we have a single query and it's short enough, use it directly
+    if len(queries) == 1 and len(queries[0]) <= 50:
+        clean_name = re.sub(r'[^\w\s-]', '', queries[0]).strip().replace(" ", "_")[:50]
+        return f"{clean_name}_combined.md"
+        
+    # For multiple queries, create a simple descriptive name
+    if len(queries) > 1:
+        # Get key nouns from each query for the name
+        words = []
+        for q in queries[:3]:  # Only use first 3 queries
+            # Skip common words and get the last meaningful word (often the subject)
+            q_words = q.lower().split()
+            for w in reversed(q_words):
+                w = re.sub(r'[^\w\s-]', '', w)
+                if w not in ['what', 'is', 'the', 'a', 'an', 'in', 'of', 'to', 'for', 'and', 'or', 'capital']:
+                    if w not in words:
+                        words.append(w)
+                    break
+        
+        name = "_".join(words)
+        if len(queries) > 3:
+            name += f"_and_{len(queries)-3}_more"
+        return f"{name}_combined.md"
+    
+    # Fallback: Use timestamp and number of queries
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"combined_results_{len(queries)}q_{timestamp}.md"
+
+
 @click.command()
 @click.version_option(version=VERSION, prog_name="askp")
 @click.argument("query_text", nargs=-1, required=False)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress console output for multiple queries")
 @click.option("--format", "-f", type=click.Choice(["text", "json", "markdown"]), default="markdown", help="Output format")
-@click.option("--output", "-o", type=click.Path(), help="Save output to file")
+@click.option("--output", "-o", "-O", type=click.Path(), help="Save output to file")
 @click.option("--num-results", "-n", type=int, default=5, help="Number of results to return from Perplexity")
 @click.option("--model", default="sonar", help="Model to use (default: sonar)")
 @click.option("--temperature", type=float, default=0.7, help="Temperature (0.0-1.0)")
@@ -667,12 +753,13 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
 @click.option("--single", "-s", is_flag=True, help="Process all arguments as a single query (default is multi-query mode)")
 @click.option("--max-parallel", type=int, default=5, help="Maximum number of parallel queries")
 @click.option("--file", "-i", type=click.Path(exists=True), help="Read queries from file, one per line")
-@click.option("--combine", "-c", is_flag=True, help="Combine multi-query results into a single output")
+@click.option("--combine", "-c", "-C", is_flag=True, help="Combine multi-query results into a single output")
 @click.option("--expand", "-e", type=int, help="Expand queries to specified total number by generating related queries")
 @click.option("--deep", "-d", is_flag=True, help="Perform deep research by generating a comprehensive research plan")
 @click.option("--cleanup-component-files", is_flag=True, help="Move component files to trash after deep research is complete")
 def cli(query_text, verbose, quiet, format, output, num_results, model, temperature, token_max, reasoning, pro_reasoning, single, max_parallel, file, combine, expand, deep, cleanup_component_files):
     """ASKP CLI - Search Perplexity AI from the command line"""
+    model = normalize_model_name(model)
     if reasoning and pro_reasoning:
         rprint("[red]Error: Cannot use both --reasoning and --pro-reasoning together[/red]")
         sys.exit(1)
