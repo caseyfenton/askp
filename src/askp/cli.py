@@ -25,11 +25,19 @@ from openai import OpenAI
 from rich.panel import Panel
 from .cost_tracking import log_query_cost
 from .tips import get_formatted_tip
-from .file_utils import get_file_stats, generate_cat_commands, format_path
+from .file_utils import get_file_stats, generate_cat_commands
+
+def format_size(size_bytes):
+    """Format byte size with appropriate unit."""
+    if size_bytes < 1024:
+        return f"{size_bytes}B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes/1024:.1f}KB"
+    else:
+        return f"{size_bytes/(1024*1024):.1f}MB"
 
 console = Console()
 VERSION = "2.4.1"
-
 
 def sanitize_filename(q: str) -> str:
     """Sanitize a query string to produce a safe filename.
@@ -137,11 +145,20 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
     Returns:
         A dictionary with query results or None if an error occurred.
     """
+    from .prompts import get_prompt_template
+    
+    # Format query with appropriate prompt template
+    if not opts.get("human_readable", False):
+        prompt_template = get_prompt_template(opts)
+        formatted_query = prompt_template.format(query=q)
+    else:
+        formatted_query = q
+    
     m = opts.get("model", "sonar-pro")
     temp = opts.get("temperature", 0.7)
-    max_tokens = opts.get("max_tokens", 8192)
+    token_max = opts.get("token_max", 3000)
     if opts.get("deep", False) and not opts.get("token_max_set_explicitly", False):
-        max_tokens = 16384
+        token_max = 16384
     reasoning = opts.get("reasoning", False)
     pro_reasoning = opts.get("pro_reasoning", False)
     model_info = get_model_info(m, reasoning, pro_reasoning)
@@ -151,10 +168,10 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
         if opts.get("verbose", False):
             rprint(f"[yellow]Using API key: {api_key[:4]}...{api_key[-4:]}[/yellow]")
         client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
-        messages = [{"role": "user", "content": q}]
-        ib = len(q.encode("utf-8"))
+        messages = [{"role": "user", "content": formatted_query}]
+        ib = len(formatted_query.encode("utf-8"))
         resp = client.chat.completions.create(
-            model=m, messages=messages, temperature=temp, max_tokens=max_tokens, stream=False
+            model=m, messages=messages, temperature=temp, max_tokens=token_max, stream=False
         )
         if isinstance(resp, str):
             rprint(f"[red]Error: Unexpected string response from API: {resp}[/red]")
@@ -339,17 +356,24 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
         return None
     od = get_output_dir()
     rf = save_result_file(q, res, i, od)
-    if opts.get("combine") and lock:
-        cf = append_to_combined(q, res, i, od, lock, opts)
-        rprint(f"[green]Combined results saved to {cf}[/green]")
+    rel_path = format_path(rf)
+    
     if opts.get("suppress_model_display", False):
         t = q[:40] + "..." if len(q) > 40 else q
         if "results" in res and res["results"]:
             bytes_count = len(res["results"][0].get("content", ""))
         else:
             bytes_count = len(res.get("content", ""))
-        rprint(f'{i+1}: "{t}"  {bytes_count:,} bytes | {res.get("tokens", 0):,} tokens | ${res["metadata"]["cost"]:.4f}')
-    rprint(f"[green]Result saved: {rf}[/green]")
+        rprint(f'{i+1}: "{t}"  {format_size(bytes_count)} | {res.get("tokens", 0)}T | ${res["metadata"]["cost"]:.4f}')
+    else:
+        rprint(f"[green]Saved: {rel_path}[/green]")
+    
+    # Only display combined results message on the last query
+    if opts.get("combine") and lock and i == opts.get("total_queries", 0) - 1:
+        cf = append_to_combined(q, res, i, od, lock, opts)
+        rel_combined = format_path(cf)
+        rprint(f"[green]Combined results saved to {rel_combined}[/green]")
+    
     return res
 
 
@@ -448,11 +472,9 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
                 rprint(f"[yellow]Warning: Failed to synthesize research: {e}[/yellow]")
                 
     if not opts.get("deep", False):
-        print("\nProcessing complete!")
-        if len(results) == 1:
-            print(f"Result: {od}/{os.path.basename(save_result_file(results[0]['query'], results[0], 0, od))}")
-        else:
-            print(f"Results: {od}")
+        print("\nDONE!")
+        rel_od = format_path(od)
+        print(f"OUTPUT FILES: {rel_od}")
         print(f"Queries: {len(results)}/{len(queries)}")
         total_bytes = 0
         for r in results:
@@ -463,7 +485,10 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
             else:
                 content_bytes = len(r.get("content", ""))
             total_bytes += content_bytes
-        print(f"Totals | {total_bytes:,} bytes | {total_tokens:,} tokens | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.2f} q/s)")
+        print(f"Totals | {format_size(total_bytes)} | {total_tokens}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.2f} q/s)")
+        
+        # Generate cat commands with 200 line limit
+        suggest_cat_commands(results, od)
         
     if results:
         results[0]["metadata"].update({"queries_per_second": qps, "elapsed_time": elapsed, "output_dir": od})
@@ -625,8 +650,11 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
             qdisp = overview if isinstance(overview, str) else " ".join(overview)
             out = f"# Deep Research: {qdisp}\n\n## Research Findings\n\n"
             for i, r in enumerate(results):
-                if r:
-                    out += f"### {i+1}. {r.get('query', 'Section '+str(i+1))}\n\n" + format_markdown(r) + "\n\n" + "-" * 50 + "\n\n"
+                if i == 0:
+                    continue
+                sec = f"Section {i}: {r.get('query', 'Section '+str(i+1))}"
+                content = r.get("results", [{}])[0].get("content", "")
+                out += f"### {i+1}. {sec}\n\n" + format_markdown(r) + "\n\n" + "-" * 50 + "\n\n"
             tot_toks = sum(r.get("tokens", 0) for r in results if r)
             tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
             qps = results[0].get("metadata", {}).get("queries_per_second", 0) if results else 0
@@ -647,8 +675,11 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
             qdisp = overview if isinstance(overview, str) else " ".join(overview)
             out = f"=== Deep Research: {qdisp} ===\n\n=== Research Findings ===\n\n"
             for i, r in enumerate(results):
-                if r:
-                    out += f"=== {i+1}. {r.get('query', 'Section ' + str(i+1))} ===\n\n" + format_text(r) + "\n\n" + "=" * 50 + "\n\n"
+                if i == 0:
+                    continue
+                sec = f"Section {i}: {r.get('query', 'Section ' + str(i+1))}"
+                content = r.get("results", [{}])[0].get("content", "")
+                out += f"=== {i+1}. {sec} ===\n\n" + format_text(r) + "\n\n" + "=" * 50 + "\n\n"
             tot_toks = sum(r.get("tokens", 0) for r in results if r)
             tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
             qps = results[0].get("metadata", {}).get("queries_per_second", 0) if results else 0
@@ -737,28 +768,226 @@ def generate_combined_filename(queries: List[str], opts: dict) -> str:
     return f"combined_results_{len(queries)}q_{timestamp}.md"
 
 
+def generate_unique_id(id_type="file") -> str:
+    """Generate a unique ID for a file or session.
+    
+    Args:
+        id_type: Type of ID to generate ("file" or "session")
+        
+    Returns:
+        A unique ID string
+    """
+    if id_type == "session":
+        return str(uuid.uuid4())
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def format_path(path):
+    """Format a path to be relative to the current directory if possible."""
+    try:
+        cwd = os.getcwd()
+        if path.startswith(cwd):
+            return path[len(cwd) + 1:]  # +1 to remove the trailing slash
+        return path
+    except:
+        return path
+
+
+def suggest_cat_commands(results, output_dir):
+    """Suggest cat commands for viewing files, respecting 200 line limit."""
+    if not results:
+        return
+    
+    files = []
+    for r in results:
+        if r and "metadata" in r and "saved_path" in r["metadata"]:
+            files.append(r["metadata"]["saved_path"])
+    
+    if not files:
+        return
+    
+    # Get line counts for each file
+    file_lines = {}
+    for f in files:
+        stats = get_file_stats(f)
+        file_lines[f] = stats[1]  # Index 1 contains line count
+    
+    # Group files to not exceed 200 lines per group
+    groups = []
+    current_group = []
+    current_lines = 0
+    
+    for f in files:
+        lines = file_lines[f]
+        if current_lines + lines > 200:
+            if current_group:
+                groups.append(current_group)
+            current_group = [f]
+            current_lines = lines
+        else:
+            current_group.append(f)
+            current_lines += lines
+    
+    if current_group:
+        groups.append(current_group)
+    
+    # Generate and print cat commands
+    print("\nTo view results:")
+    for i, group in enumerate(groups):
+        cmd = " && ".join([f"cat {format_path(f)}" for f in group])
+        print(f"Command {i+1}: {cmd}")
+
+
+def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
+    """Process multiple queries in parallel.
+
+    Args:
+        queries: A list of query strings.
+        opts: Options dictionary.
+
+    Returns:
+        A list of result dictionaries.
+    """
+    print(f"\nProcessing {len(queries)} queries in parallel...")
+    mi = get_model_info(opts.get("model", "sonar-pro"), opts.get("reasoning", False), opts.get("pro_reasoning", False))
+    print(f"Model: {mi['model']}{' (reasoning)' if mi.get('reasoning', False) else ''} | Temp: {opts.get('temperature', 0.7)}")
+    opts["suppress_model_display"] = True
+    
+    results: List[Optional[dict]] = []
+    total_tokens = 0
+    total_cost = 0
+    start = time.time()
+    lock = threading.Lock()
+    
+    # Pre-generate combined filename if needed
+    if opts.get("combine"):
+        od = get_output_dir()
+        if not opts.get("output"):
+            opts["output"] = os.path.join(od, generate_combined_filename(queries, opts))
+    
+    max_workers = opts.get("max_parallel", 10)
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(queries))) as ex:
+        futures = {ex.submit(execute_query, q, i, opts, lock): i for i, q in enumerate(queries)}
+        for f in futures:
+            try:
+                r = f.result()
+                if r:
+                    results.append(r)
+                    total_tokens += r.get("tokens", 0)
+                    total_cost += r["metadata"].get("cost", 0)
+            except Exception as e:
+                rprint(f"[red]Error in future: {e}[/red]")
+                
+    elapsed = time.time() - start
+    qps = len(results) / elapsed if elapsed > 0 else 0
+    od = get_output_dir()
+    
+    if opts.get("deep", False) and len(results) > 1:
+        try:
+            if opts.get("verbose", False):
+                rprint("[blue]Synthesizing research results...[/blue]")
+            from .deep_research import synthesize_research
+            sections = {}
+            for i, r in enumerate(results):
+                if i == 0:
+                    continue
+                sec = f"Section {i}: {r.get('query', '')}"
+                content = r.get("results", [{}])[0].get("content", "")
+                sections[sec] = content
+            orig = opts.get("research_overview", results[0]["query"])
+            if isinstance(orig, tuple):
+                orig = " ".join(str(x) for x in orig)
+            synthesis = synthesize_research(query=orig, results=sections, options=opts)
+            intro_text = synthesis.get("introduction", "")
+            concl_text = synthesis.get("conclusion", "")
+            intro = {
+                "query": "Introduction",
+                "content": intro_text,
+                "tokens": int(len(intro_text.split()) * 1.3),
+                "metadata": {
+                    "cost": int(len(intro_text.split()) * 1.3) * 0.000001,
+                    "verbose": opts.get("verbose", False),
+                    "model": opts.get("model", "sonar-pro"),
+                    "tokens": int(len(intro_text.split()) * 1.3),
+                    "num_results": 1,
+                },
+            }
+            concl = {
+                "query": "Conclusion",
+                "content": concl_text,
+                "tokens": int(len(concl_text.split()) * 1.3),
+                "metadata": {
+                    "cost": int(len(concl_text.split()) * 1.3) * 0.000001,
+                    "verbose": opts.get("verbose", False),
+                    "model": opts.get("model", "sonar-pro"),
+                    "tokens": int(len(concl_text.split()) * 1.3),
+                    "num_results": 1,
+                },
+            }
+            results.insert(0, intro)
+            results.append(concl)
+            total_tokens += intro["tokens"] + concl["tokens"]
+            total_cost += intro["metadata"]["cost"] + concl["metadata"]["cost"]
+        except Exception as e:
+            if opts.get("verbose", False):
+                rprint(f"[yellow]Warning: Failed to synthesize research: {e}[/yellow]")
+                
+    if not opts.get("deep", False):
+        print("\nDONE!")
+        rel_od = format_path(od)
+        print(f"OUTPUT FILES: {rel_od}")
+        print(f"Queries: {len(results)}/{len(queries)}")
+        total_bytes = 0
+        for r in results:
+            if not r:
+                continue
+            if "results" in r and r["results"]:
+                content_bytes = len(r["results"][0].get("content", ""))
+            else:
+                content_bytes = len(r.get("content", ""))
+            total_bytes += content_bytes
+        print(f"Totals | {format_size(total_bytes)} | {total_tokens}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.2f} q/s)")
+        
+        # Generate cat commands with 200 line limit
+        suggest_cat_commands(results, od)
+        
+    if results:
+        results[0]["metadata"].update({"queries_per_second": qps, "elapsed_time": elapsed, "output_dir": od})
+    return results
+
+
 @click.command()
 @click.version_option(version=VERSION, prog_name="askp")
 @click.argument("query_text", nargs=-1, required=False)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-@click.option("--quiet", "-q", is_flag=True, help="Suppress console output for multiple queries")
-@click.option("--format", "-f", type=click.Choice(["text", "json", "markdown"]), default="markdown", help="Output format")
-@click.option("--output", "-o", "-O", type=click.Path(), help="Save output to file")
-@click.option("--num-results", "-n", type=int, default=5, help="Number of results to return from Perplexity")
-@click.option("--model", default="sonar", help="Model to use (default: sonar)")
-@click.option("--temperature", type=float, default=0.7, help="Temperature (0.0-1.0)")
-@click.option("--token-max", "-t", type=int, default=8192, help="Maximum tokens to use")
-@click.option("--reasoning", "-r", is_flag=True, help="Use reasoning model ($5.00 per million tokens)")
-@click.option("--pro-reasoning", is_flag=True, help="Use pro reasoning model ($8.00 per million tokens)")
-@click.option("--single", "-s", is_flag=True, help="Process all arguments as a single query (default is multi-query mode)")
+@click.option("--quiet", "-q", is_flag=True, help="Suppress all output")
+@click.option("--format", "-f", type=click.Choice(["markdown", "json"]), default="markdown", help="Output format")
+@click.option("--output", "-o", type=click.Path(), help="Output file path")
+@click.option("--num-results", "-n", type=int, default=1, help="Number of results per query")
+@click.option("--model", "-m", type=str, default="sonar-pro", help="Model to use (sonar, sonar-pro)")
+@click.option("--sonar", "-S", is_flag=True, help="Use Sonar model")
+@click.option("--sonar-pro", "-SP", is_flag=True, help="Use Sonar Pro model (default)")
+@click.option("--temperature", "-t", type=float, default=0.7, help="Temperature")
+@click.option("--token_max", type=int, help="Maximum tokens to generate")
+@click.option("--reasoning", "-r", is_flag=True, help="Use reasoning mode if available")
+@click.option("--pro-reasoning", "-pr", is_flag=True, help="Use pro reasoning mode")
+@click.option("--single", "-s", is_flag=True, help="Force single query mode")
 @click.option("--max-parallel", type=int, default=5, help="Maximum number of parallel queries")
 @click.option("--file", "-i", type=click.Path(exists=True), help="Read queries from file, one per line")
-@click.option("--combine", "-c", "-C", is_flag=True, help="Combine multi-query results into a single output")
+@click.option("--no-combine", "-nc", is_flag=True, help="Don't combine results (default is to combine)")
+@click.option("--human", "-H", is_flag=True, help="Output in human-readable format")
 @click.option("--expand", "-e", type=int, help="Expand queries to specified total number by generating related queries")
 @click.option("--deep", "-d", is_flag=True, help="Perform deep research by generating a comprehensive research plan")
 @click.option("--cleanup-component-files", is_flag=True, help="Move component files to trash after deep research is complete")
-def cli(query_text, verbose, quiet, format, output, num_results, model, temperature, token_max, reasoning, pro_reasoning, single, max_parallel, file, combine, expand, deep, cleanup_component_files):
+def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, sonar_pro, temperature, token_max, reasoning, 
+        pro_reasoning, single, max_parallel, file, no_combine, human, expand, deep, cleanup_component_files):
     """ASKP CLI - Search Perplexity AI from the command line"""
+    # Handle model selection from shorthand options
+    if sonar:
+        model = "sonar"
+    elif sonar_pro:
+        model = "sonar-pro"
+        
     model = normalize_model_name(model)
     if reasoning and pro_reasoning:
         rprint("[red]Error: Cannot use both --reasoning and --pro-reasoning together[/red]")
@@ -795,13 +1024,14 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, temperat
         "max_tokens": token_max,
         "reasoning": reasoning,
         "pro_reasoning": pro_reasoning,
-        "combine": combine,
+        "combine": not no_combine,
         "max_parallel": max_parallel,
         "token_max_set_explicitly": token_max_set,
         "reasoning_set_explicitly": reasoning_set,
         "output_dir": get_output_dir(),
         "multi": not single,
         "cleanup_component_files": cleanup_component_files,
+        "human_readable": human,
     }
     if expand:
         opts["expand"] = expand
