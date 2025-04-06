@@ -21,8 +21,8 @@ import click
 from rich import print as rprint
 from rich.console import Console
 from rich.markdown import Markdown
-from openai import OpenAI
 from rich.panel import Panel
+from openai import OpenAI
 from .cost_tracking import log_query_cost
 from .tips import get_formatted_tip
 from .file_utils import get_file_stats, generate_cat_commands
@@ -959,13 +959,9 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, s
         if single:
             queries.append(" ".join(query_text))
         else:
-            # Only treat arguments that start with a quote as actual queries
+            # Add all non-option arguments as separate queries
             for arg in query_text:
-                # Check if this looks like a quoted query - either starts with " or '
-                if (arg.startswith('"') or arg.startswith("'")) and not arg.startswith("-"):
-                    queries.append(arg)
-                elif not arg.startswith("-") and not queries:
-                    # For backward compatibility, add non-option arguments as queries only if no quoted queries yet
+                if not arg.startswith("-"):
                     queries.append(arg)
     elif not queries and not sys.stdin.isatty():
         queries.extend([l.strip() for l in sys.stdin.read().splitlines() if l.strip()])
