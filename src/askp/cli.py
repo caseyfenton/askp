@@ -73,6 +73,17 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
     token_max = opts.get("token_max", 3000) if not (opts.get("deep", False) and not opts.get("token_max_set_explicitly", False)) else 16384
     reasoning, pro_reasoning = opts.get("reasoning", False), opts.get("pro_reasoning", False)
     mi = get_model_info(m, reasoning, pro_reasoning); m = mi["model"]
+    
+    # Track API response and errors in diagnostic data
+    diagnostic_data = {
+        "query": q,
+        "model": m,
+        "temperature": temp,
+        "max_tokens": token_max,
+        "formatted_query_length": len(formatted_query.encode("utf-8")),
+        "errors": []
+    }
+    
     try:
         api_key = load_api_key()
         if opts.get("verbose", False):
@@ -83,17 +94,50 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
         if opts.get("test_mode", False) and "test query" in formatted_query and opts.get("retry_on_rate_limit", False):
             return {"query": formatted_query, "results": [{"content": "Test result after retry"}],
                     "tokens": 100, "metadata": {"cost": 0.0001}}
-        resp = client.chat.completions.create(model=m, messages=messages, temperature=temp,
-                                              max_tokens=token_max, stream=False)
+        
+        # Capture any exceptions during API call
+        try:
+            resp = client.chat.completions.create(model=m, messages=messages, temperature=temp,
+                                                  max_tokens=token_max, stream=False)
+            diagnostic_data["api_response_received"] = True
+        except Exception as api_err:
+            error_msg = f"API request error: {str(api_err)}"
+            diagnostic_data["errors"].append(error_msg)
+            rprint(f"[red]{error_msg}[/red]")
+            diagnostic_data["raw_error"] = str(api_err)
+            return {"error": error_msg, "diagnostic_data": diagnostic_data}
+            
         if isinstance(resp, str):
-            rprint(f"[red]Error: Unexpected string response from API: {resp}[/red]"); return None
+            error_msg = f"Unexpected string response from API: {resp}"
+            diagnostic_data["errors"].append(error_msg)
+            rprint(f"[red]{error_msg}[/red]")
+            return {"error": error_msg, "diagnostic_data": diagnostic_data}
+        
         try:
             content = resp.choices[0].message.content; ob = len(content.encode("utf-8"))
             total = resp.usage.total_tokens
+            diagnostic_data["content_length"] = ob
+            diagnostic_data["total_tokens"] = total
         except (AttributeError, IndexError) as e:
-            diagnostic = f"Error accessing response data: {e}. Raw response: {resp}"
+            diagnostic = f"Error accessing response data: {e}. Raw response type: {type(resp)}"
             rprint(f"[red]{diagnostic}[/red]")
-            return {"error": diagnostic, "raw_response": resp}
+            diagnostic_data["errors"].append(diagnostic)
+            diagnostic_data["raw_response_type"] = str(type(resp))
+            
+            # Try to safely capture response details for diagnosis
+            try:
+                if hasattr(resp, 'model_dump'):
+                    resp_dict = resp.model_dump()
+                    diagnostic_data["response_dump"] = str(resp_dict)
+                if hasattr(resp, 'choices') and resp.choices:
+                    diagnostic_data["choices_count"] = len(resp.choices)
+                if hasattr(resp, 'error'):
+                    diagnostic_data["api_error"] = str(resp.error)
+            except Exception as dump_err:
+                diagnostic_data["dump_error"] = str(dump_err)
+                
+            return {"error": diagnostic, "diagnostic_data": diagnostic_data}
+        
         if not opts.get("suppress_model_display", False):
             disp = mi["model"] + (" (reasoning)" if reasoning or pro_reasoning else ""); print(f"[{disp} | Temp: {temp}]")
         try:
