@@ -9,10 +9,13 @@ import os
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(project_root))
 
-# Import the main function directly instead of importing it through askp.__init__
-# This prevents the duplicate module warning
-from askp.cli import main as askp_main
+# DO NOT import anything from askp modules here to avoid circular imports
+# Instead, delay all imports until they're needed
 
 if __name__ == "__main__":
     sys.argv[0] = "askp"  # Make help text show "askp" instead of the script name
+    
+    # Import main function at runtime after sys.path is set up
+    # This prevents the "module found in sys.modules" warning
+    from askp.cli import main as askp_main
     askp_main()
