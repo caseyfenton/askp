@@ -21,7 +21,7 @@ from .bgrun_integration import notify_query_completed, notify_multi_query_comple
 
 console = Console()
 VERSION = "2.4.1"
-MAX_CODE_SIZE = 300 * 1024  # Maximum code file size in bytes (300KB)
+MAX_CODE_SIZE = 60 * 1024  # Maximum code file size in bytes (60KB) - ~12K tokens to stay within API limit
 
 def format_size(s: int) -> str:
     """Format byte size with appropriate unit."""
@@ -434,7 +434,12 @@ def handle_code_check(code_file: str, query_text: List[str], single_mode: bool, 
         code_path = Path(code_file); file_size = code_path.stat().st_size
         with console.status(f"Reading {code_file}...", spinner="dots"):
             with open(code_file, "r", encoding="utf-8", errors="replace") as f:
-                code_content = f.read() if file_size <= MAX_CODE_SIZE else f.read()[:MAX_CODE_SIZE]
+                # Only read up to MAX_CODE_SIZE
+                code_content = f.read(MAX_CODE_SIZE)
+                if file_size > MAX_CODE_SIZE and not quiet:
+                    rprint(f"[yellow]Warning: File size ({format_size(file_size)}) exceeds Perplexity's 16K token limit. "
+                           f"Truncating to {format_size(MAX_CODE_SIZE)} (~12K tokens). "
+                           f"Large files may result in incomplete analysis.[/yellow]")
         lang = {".py": "python", ".js": "javascript", ".ts": "typescript", ".java": "java",
                 ".cpp": "cpp", ".c": "c", ".rb": "ruby", ".go": "go", ".rs": "rust"}.get(code_path.suffix.lower(), "")
         code_block = f"```{lang}\n{code_content}\n```" if lang else f"```\n{code_content}\n```"
