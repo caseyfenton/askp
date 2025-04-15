@@ -1,127 +1,153 @@
 #!/usr/bin/env python3
 """
-API interaction for ASKP.
-Contains the search_perplexity function to interact with the Perplexity API.
+API interaction module for ASKP CLI.
+Contains functions to interact with the Perplexity API and process responses.
 """
-import os, sys, json, uuid, threading, time, re, shutil, requests
-from datetime import datetime
-from pathlib import Path
-from typing import Optional, Dict, Any
-from askp.utils import load_api_key, get_model_info, normalize_model_name, estimate_cost, get_output_dir
+import os
+import sys
+import json
+import time
+import uuid
+from typing import Dict, Any, Optional, List, Union, Tuple, TypedDict, Literal
+
+import openai
 from rich import print as rprint
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
-def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+ModelType = Literal["sonar", "sonar-pro", "sonar-pro-reasoning", "sonar-reasoning"]
+
+class PerplexityResponse(TypedDict, total=False):
+    """TypedDict for Perplexity API response structure."""
+    content: str
+    model: str
+    tokens: int
+    query: str
+    metadata: Dict[str, Any]
+    error: Optional[str]
+    raw_response: Optional[Any]
+    
+def load_openai_client(api_key: Optional[str] = None) -> openai.OpenAI:
     """
-    Perform a search query using the Perplexity API.
+    Load OpenAI client with appropriate configuration for Perplexity API.
+    
+    Args:
+        api_key: Optional API key to use instead of environment variable
+        
+    Returns:
+        Configured OpenAI client for Perplexity API
+        
+    Raises:
+        ValueError: If no API key is found
     """
-    from askp.prompts import get_prompt_template
-    formatted_query = (get_prompt_template(opts).format(query=q)
-                       if not opts.get("human_readable", False) else q)
-    m = opts.get("model", "sonar-pro")
-    temp = opts.get("temperature", 0.7)
-    token_max = opts.get("token_max", 3000) if not (opts.get("deep", False) and not opts.get("token_max_set_explicitly", False)) else 16384
-    reasoning = opts.get("reasoning", False)
-    pro_reasoning = opts.get("pro_reasoning", False)
-    mi = get_model_info(m, reasoning, pro_reasoning)
-    m = mi["model"]
+    from askp.utils import load_api_key
+    
+    api_key = api_key or load_api_key()
+    if not api_key:
+        raise ValueError("No API key found. Set PERPLEXITY_API_KEY environment variable or create a .env file.")
+    
+    return openai.OpenAI(
+        api_key=api_key,
+        base_url="https://api.perplexity.ai"
+    )
 
-    debug_mode = opts.get("debug", False)
-    debug_log_file = os.path.join(get_output_dir(), "api_debug_log.json") if debug_mode else None
-
-    diagnostic_data = {
-        "query": q,
-        "model": m,
-        "temperature": temp,
-        "max_tokens": token_max,
-        "formatted_query_length": len(formatted_query.encode("utf-8")),
-        "errors": [],
-        "timestamp": datetime.now().isoformat()
-    }
+def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityResponse]:
+    """
+    Search the Perplexity API with the given query and options.
+    
+    Args:
+        q: The query string to send to Perplexity
+        opts: Dictionary of options including:
+            - model: Model name to use (sonar, sonar-pro, etc.)
+            - temperature: Temperature for generation (0.0-1.0)
+            - token_max: Maximum tokens to generate
+            - reasoning: Whether to use reasoning mode
+            - pro_reasoning: Whether to use pro reasoning mode
+            - debug: Whether to capture raw API responses
+            
+    Returns:
+        Dictionary containing the response content and metadata, or
+        an error dictionary with 'error' key if the request failed
+        
+    Note:
+        If the request fails, returns a dictionary with an 'error' key
+        instead of None for better error handling in downstream functions.
+    """
+    from askp.utils import normalize_model_name, get_model_info, estimate_cost
+    
+    model = normalize_model_name(opts.get("model", ""))
+    if opts.get("reasoning", False) and "reasoning" not in model:
+        model = "sonar-reasoning" if model == "sonar" else "sonar-pro-reasoning"
+    if opts.get("pro_reasoning", False):
+        model = "sonar-pro-reasoning"
+    
+    temperature = float(opts.get("temperature", 0.7))
+    max_tokens = int(opts.get("token_max", 4096))
+    
+    if opts.get("verbose", False):
+        rprint(f"[blue]Query: {q}[/blue]")
+        rprint(f"[blue]Model: {model}, Temperature: {temperature}, Max tokens: {max_tokens}[/blue]")
+    
     try:
-        api_key = load_api_key()
-        if opts.get("verbose", False) or debug_mode:
-            rprint(f"[yellow]Using API key: {api_key[:4]}...{api_key[-4:]}[/yellow]")
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
-        messages = [{"role": "user", "content": formatted_query}]
-        ib = len(formatted_query.encode("utf-8"))
-        if opts.get("test_mode", False) and "test query" in formatted_query and opts.get("retry_on_rate_limit", False):
-            return {"query": formatted_query, "results": [{"content": "Test result after retry"}],
-                    "tokens": 100, "metadata": {"cost": 0.0001}}
-        try:
-            if debug_mode:
-                rprint("[yellow]Debug mode enabled - capturing raw API responses[/yellow]")
-            resp = client.chat.completions.create(model=m, messages=messages, temperature=temp,
-                                                  max_tokens=token_max, stream=False)
-            diagnostic_data["api_response_received"] = True
-            if debug_mode:
-                try:
-                    if hasattr(resp, 'model_dump'):
-                        resp_dump = resp.model_dump()
-                        diagnostic_data["raw_api_response"] = resp_dump
-                        with open(debug_log_file, 'w') as f:
-                            json.dump({"api_response": resp_dump, "diagnostic_data": diagnostic_data}, f, indent=2)
-                        rprint(f"[green]Debug info saved to: {debug_log_file}[/green]")
-                except Exception as dump_err:
-                    rprint(f"[red]Error saving debug info: {dump_err}[/red]")
-        except Exception as api_err:
-            error_msg = f"API request error: {str(api_err)}"
-            diagnostic_data["errors"].append(error_msg)
-            rprint(f"[red]{error_msg}[/red]")
-            diagnostic_data["raw_error"] = str(api_err)
-            if debug_mode:
-                with open(debug_log_file, 'w') as f:
-                    json.dump({"api_error": str(api_err), "diagnostic_data": diagnostic_data}, f, indent=2)
-                rprint(f"[yellow]Debug error info saved to: {debug_log_file}[/yellow]")
-            return {"error": error_msg, "diagnostic_data": diagnostic_data}
-        if isinstance(resp, str):
-            error_msg = f"Unexpected string response from API: {resp}"
-            diagnostic_data["errors"].append(error_msg)
-            rprint(f"[red]{error_msg}[/red]")
-            return {"error": error_msg, "diagnostic_data": diagnostic_data}
+        client = load_openai_client()
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True,
+        ) as progress:
+            progress.add_task(description="Querying Perplexity API...", total=None)
+            
+            start_time = time.time()
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": q}],
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            elapsed = time.time() - start_time
+        
         try:
             content = resp.choices[0].message.content
             ob = len(content.encode("utf-8"))
             total = resp.usage.total_tokens
-            diagnostic_data["content_length"] = ob
-            diagnostic_data["total_tokens"] = total
+            
+            mi = get_model_info(model, "reasoning" in model, "pro-reasoning" in model)
+            cost = estimate_cost(total, mi)
+            
+            result: PerplexityResponse = {
+                "content": content,
+                "model": model,
+                "tokens": total,
+                "query": q,
+                "metadata": {
+                    "bytes": ob,
+                    "cost": cost,
+                    "elapsed_time": elapsed,
+                    "timestamp": time.time(),
+                    "uuid": str(uuid.uuid4())
+                }
+            }
+            
+            # Log query cost if not suppressed
+            if not opts.get("suppress_cost_logging", False):
+                try:
+                    from askp.cost_tracking import log_query_cost
+                    log_query_cost(q[:50], total, cost, model)
+                except Exception as e:
+                    rprint(f"[yellow]Warning: Failed to log query cost: {e}[/yellow]")
+            
+            # If debug mode is enabled, capture the raw response
+            if opts.get("debug", False):
+                result["raw_response"] = resp
+                
+            return result
+            
         except (AttributeError, IndexError) as e:
-            diagnostic = f"Error accessing response data: {e}. Raw response type: {type(resp)}"
+            diagnostic = f"Error accessing response data: {e}. Raw response: {resp}"
             rprint(f"[red]{diagnostic}[/red]")
-            diagnostic_data["errors"].append(diagnostic)
-            diagnostic_data["raw_response_type"] = str(type(resp))
-            try:
-                if hasattr(resp, 'model_dump'):
-                    resp_dict = resp.model_dump()
-                    diagnostic_data["response_dump"] = str(resp_dict)
-                if hasattr(resp, 'choices') and resp.choices:
-                    diagnostic_data["choices_count"] = len(resp.choices)
-                if hasattr(resp, 'error'):
-                    diagnostic_data["api_error"] = str(resp.error)
-            except Exception as dump_err:
-                diagnostic_data["dump_error"] = str(dump_err)
-            return {"error": diagnostic, "diagnostic_data": diagnostic_data}
-        if not opts.get("suppress_model_display", False):
-            disp = mi["model"] + (" (reasoning)" if reasoning or pro_reasoning else "")
-            print(f"[{disp} | Temp: {temp}]")
-        try:
-            from askp.cost_tracking import log_query_cost
-            log_query_cost(str(uuid.uuid4()), mi, total, os.path.basename(os.getcwd()))
-        except Exception as e:
-            rprint(f"[yellow]Warning: Failed to log query cost: {e}[/yellow]")
-        citations = []
-        try:
-            resp_dict = resp.model_dump()
-            if "citations" in resp_dict and isinstance(resp_dict["citations"], list):
-                citations = resp_dict["citations"]
-        except AttributeError:
-            pass
-        return {"query": q, "results": [{"content": content}], "citations": citations, "model": m, "tokens": total,
-                "bytes": ib + ob, "metadata": {"model": m, "tokens": total, "cost": estimate_cost(total, mi),
-                "num_results": 1, "verbose": opts.get("verbose", False), "format": opts.get("format", "markdown")},
-                "model_info": mi, "tokens_used": total}
+            return {"error": diagnostic, "raw_response": resp}
+            
     except Exception as e:
-        err_str = str(e)
-        rprint("[red]Error: 401 Unauthorized - You are likely out of API credits.[/red]" if "401" in err_str
-               else f"[red]Error in search_perplexity: {e}[/red]")
-        return None
+        error_msg = f"Error querying Perplexity API: {e}"
+        rprint(f"[red]{error_msg}[/red]")
+        return {"error": error_msg}
