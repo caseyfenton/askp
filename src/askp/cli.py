@@ -74,6 +74,10 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
     reasoning, pro_reasoning = opts.get("reasoning", False), opts.get("pro_reasoning", False)
     mi = get_model_info(m, reasoning, pro_reasoning); m = mi["model"]
     
+    # Debug mode settings
+    debug_mode = opts.get("debug", False)
+    debug_log_file = os.path.join(get_output_dir(), "api_debug_log.json") if debug_mode else None
+    
     # Track API response and errors in diagnostic data
     diagnostic_data = {
         "query": q,
@@ -81,12 +85,13 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
         "temperature": temp,
         "max_tokens": token_max,
         "formatted_query_length": len(formatted_query.encode("utf-8")),
-        "errors": []
+        "errors": [],
+        "timestamp": datetime.now().isoformat()
     }
     
     try:
         api_key = load_api_key()
-        if opts.get("verbose", False):
+        if opts.get("verbose", False) or debug_mode:
             rprint(f"[yellow]Using API key: {api_key[:4]}...{api_key[-4:]}[/yellow]")
         client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
         messages = [{"role": "user", "content": formatted_query}]
@@ -97,14 +102,36 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
         
         # Capture any exceptions during API call
         try:
+            if debug_mode:
+                rprint("[yellow]Debug mode enabled - capturing raw API responses[/yellow]")
+                
             resp = client.chat.completions.create(model=m, messages=messages, temperature=temp,
                                                   max_tokens=token_max, stream=False)
             diagnostic_data["api_response_received"] = True
+            
+            if debug_mode:
+                try:
+                    # Save raw response to diagnostic log
+                    if hasattr(resp, 'model_dump'):
+                        resp_dump = resp.model_dump()
+                        diagnostic_data["raw_api_response"] = resp_dump
+                        with open(debug_log_file, 'w') as f:
+                            json.dump({"api_response": resp_dump, "diagnostic_data": diagnostic_data}, f, indent=2)
+                        rprint(f"[green]Debug info saved to: {debug_log_file}[/green]")
+                except Exception as dump_err:
+                    rprint(f"[red]Error saving debug info: {dump_err}[/red]")
+                    
         except Exception as api_err:
             error_msg = f"API request error: {str(api_err)}"
             diagnostic_data["errors"].append(error_msg)
             rprint(f"[red]{error_msg}[/red]")
             diagnostic_data["raw_error"] = str(api_err)
+            
+            if debug_mode:
+                with open(debug_log_file, 'w') as f:
+                    json.dump({"api_error": str(api_err), "diagnostic_data": diagnostic_data}, f, indent=2)
+                rprint(f"[yellow]Debug error info saved to: {debug_log_file}[/yellow]")
+                
             return {"error": error_msg, "diagnostic_data": diagnostic_data}
             
         if isinstance(resp, str):
@@ -448,7 +475,7 @@ def suggest_cat_commands(results, output_dir) -> None:
             current_group, current_lines = [f], lines
         else:
             current_group.append(f); current_lines += lines
-    if current_group: groups.append(current_group)
+    if current_group: groups.append(current_group)  # CRITICAL: Do not remove this line
     if len(files)==1:
         f = files[0]; stats = get_file_stats(f)
         print(f"\nFile: {format_path(f)} ({stats[1]} lines)"); print(f"To view: cat {format_path(f)}")
@@ -532,8 +559,9 @@ def handle_code_check(code_file: str, query_text: List[str], single_mode: bool, 
 @click.option("--cleanup-component-files", is_flag=True, help="Move component files to trash after deep research is complete")
 @click.option("--quick", "-Q", is_flag=True, help="Combine all queries into a single request with short answers")
 @click.option("--code-check", "-cc", type=click.Path(exists=True), help="File to check for code quality/issues")
+@click.option("--debug", is_flag=True, help="Capture raw API responses for debugging")
 def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, sonar_pro, temperature, token_max, reasoning, 
-        pro_reasoning, single, max_parallel, file, no_combine, combine, human, expand, deep, cleanup_component_files, quick, code_check):
+        pro_reasoning, single, max_parallel, file, no_combine, combine, human, expand, deep, cleanup_component_files, quick, code_check, debug):
     """ASKP CLI - Search Perplexity AI from the command line"""
     model = "sonar" if sonar else "sonar-pro" if sonar_pro else model; model = normalize_model_name(model)
     if reasoning and pro_reasoning:
@@ -558,7 +586,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, s
          "model": model, "temperature": temperature, "max_tokens": token_max, "reasoning": reasoning, "pro_reasoning": pro_reasoning,
          "combine": not no_combine or combine, "max_parallel": max_parallel, "token_max_set_explicitly": token_max_set,
          "reasoning_set_explicitly": reasoning_set, "output_dir": get_output_dir(), "multi": not single,
-         "cleanup_component_files": cleanup_component_files, "human_readable": human, "quick": quick}
+         "cleanup_component_files": cleanup_component_files, "human_readable": human, "quick": quick, "debug": debug}
     if expand: opts["expand"] = expand
     if deep:
         if not quiet: rprint("[blue]Deep research mode enabled. Generating research plan...[/blue]")
