@@ -91,7 +91,9 @@ def search_perplexity(q: str, opts: dict) -> Optional[dict]:
             content = resp.choices[0].message.content; ob = len(content.encode("utf-8"))
             total = resp.usage.total_tokens
         except (AttributeError, IndexError) as e:
-            rprint(f"[red]Error accessing response data: {e}[/red]"); rprint(f"[yellow]Response type: {type(resp)}[/yellow]"); return None
+            diagnostic = f"Error accessing response data: {e}. Raw response: {resp}"
+            rprint(f"[red]{diagnostic}[/red]")
+            return {"error": diagnostic, "raw_response": resp}
         if not opts.get("suppress_model_display", False):
             disp = mi["model"] + (" (reasoning)" if reasoning or pro_reasoning else ""); print(f"[{disp} | Temp: {temp}]")
         try:
@@ -237,7 +239,9 @@ def format_markdown(res: dict) -> str:
     if meta.get("verbose", False):
         parts += [f"**Query:** {res.get('query', 'No query')}", f"**Model:** {meta.get('model', 'Unknown')}",
                   f"**Tokens Used:** {meta.get('tokens', 0)}", f"**Estimated Cost:** ${meta.get('cost', 0):.6f}\n"]
-    if "content" in res:
+    if res.get("error"):
+        parts.append(f"**Error:** {res['error']}")
+    elif "content" in res:
         parts.append(res["content"])
     elif res.get("results") and "content" in res["results"][0]:
         parts.append(res["results"][0]["content"])
@@ -259,7 +263,9 @@ def format_text(res: dict) -> str:
     if meta.get("verbose", False):
         parts += [f"Query: {res.get('query', 'No query')}", f"Model: {meta.get('model', 'Unknown')}",
                   f"Tokens: {meta.get('tokens', 0)}", f"Cost: ${meta.get('cost', 0):.6f}\n"]
-    if "content" in res:
+    if res.get("error"):
+        parts.append(f"Error: {res['error']}")
+    elif "content" in res:
         parts.append(res["content"])
     elif res.get("results") and "content" in res["results"][0]:
         parts.append(res["results"][0]["content"])
