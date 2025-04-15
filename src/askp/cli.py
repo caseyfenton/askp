@@ -225,7 +225,7 @@ def append_to_combined(q: str, res: dict, i: int, out_dir: str, lock: threading.
                 safe = re.sub(r'[^\w\s-]', '', query).strip().lower().replace(" ", "-")
                 f.write(f"{idx}. [{query}](#{safe})\n")
             for sec in sections.values():
-                f.write("\n" + sec + "\n---\n")
+                f.write("\n" + sec + "\n---\n\n")
     return combined
 
 def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = None) -> Optional[dict]:
@@ -233,6 +233,7 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
     res = search_perplexity(q, opts)
     if not res: return None
     od = get_output_dir(); rf = save_result_file(q, res, i, od); rel_path = format_path(rf)
+    res.setdefault("metadata", {})["saved_path"] = rf
     if opts.get("suppress_model_display", False):
         t = q[:40] + "..." if len(q) > 40 else q
         bytes_count = len(res["results"][0].get("content", "")) if res.get("results") else len(res.get("content", ""))
@@ -290,9 +291,19 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
         except Exception as e:
             if opts.get("verbose", False): rprint(f"[yellow]Warning: Failed to synthesize research: {e}[/yellow]")
     if not opts.get("deep", False):
-        print("\nDONE!"); rel_od = format_path(od)
-        print(f"Output file: {rel_od}" if len(results)==1 else f"Output files: {rel_od}")
-        print(f"Queries: {len(results)}/{len(queries)}")
+        print("\nDONE!")
+        if opts.get("output"):
+            # Use the explicitly provided output file.
+            rel_file = format_path(opts["output"])
+        elif len(results) == 1:
+            # Use the saved file from metadata.
+            rel_file = format_path(results[0].get("metadata", {}).get("saved_path", get_output_dir()))
+        else:
+            combined_file = os.path.join(od, generate_combined_filename(
+                [r.get("query", f"query_{i}") for i, r in enumerate(results) if r], opts))
+            rel_file = format_path(combined_file)
+        print(f"Output file: {rel_file}")
+        print(f"Queries processed: {len(results)}/{len(queries)}")
         total_bytes = sum(len(r["results"][0].get("content", "")) if r.get("results") else len(r.get("content", "")) for r in results if r)
         print(f"Totals | {format_size(total_bytes)} | {total_tokens}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.2f} q/s)")
         suggest_cat_commands(results, od)
@@ -475,7 +486,7 @@ def suggest_cat_commands(results, output_dir) -> None:
             current_group, current_lines = [f], lines
         else:
             current_group.append(f); current_lines += lines
-    if current_group: groups.append(current_group)  # CRITICAL: Do not remove this line
+    if current_group: groups.append(current_group)  # CRITICAL LINE: DO NOT REMOVE
     if len(files)==1:
         f = files[0]; stats = get_file_stats(f)
         print(f"\nFile: {format_path(f)} ({stats[1]} lines)"); print(f"To view: cat {format_path(f)}")
