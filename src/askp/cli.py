@@ -31,7 +31,13 @@ VERSION = "2.4.1"
 @click.argument("query_text", nargs=-1, required=False)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output")
-@click.option("--format", "-f", type=click.Choice(["markdown", "json"]), default="markdown", help="Output format")
+@click.option(
+    "--format", 
+    "-f", 
+    type=click.Choice(["markdown", "md", "json", "text", "txt"]), 
+    default="markdown", 
+    help="Output format: markdown/md, json, or text/txt"
+)
 @click.option("--output", "-o", type=click.Path(), help="Output file path")
 @click.option("--num-results", "-n", type=int, default=1, help="Number of results per query")
 @click.option("--model", "-m", type=str, default="sonar-pro", help="Model to use (sonar, sonar-pro)")
@@ -57,6 +63,13 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, s
     """ASKP CLI - Search Perplexity AI from the command line"""
     model = "sonar" if sonar else "sonar-pro" if sonar_pro else model
     model = normalize_model_name(model)
+    
+    # Normalize format aliases
+    if format == "md":
+        format = "markdown"
+    elif format == "txt":
+        format = "text"
+        
     if reasoning and pro_reasoning:
         rprint("[red]Error: Cannot use both --reasoning and --pro-reasoning together[/red]")
         sys.exit(1)
