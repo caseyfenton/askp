@@ -14,15 +14,15 @@ from typing import Dict, List, Optional, Tuple, Union, Any
 
 from rich import print as rprint
 from rich.console import Console
-from askp.executor import execute_query, handle_multi_query, output_result, output_multi_results
-from askp.api import search_perplexity
-from askp.codecheck import handle_code_check
-from askp.formatters import format_json, format_markdown, format_text
-from askp.file_utils import format_path, get_file_stats, generate_cat_commands
-from askp.utils import (format_size, sanitize_filename, load_api_key, get_model_info, 
-                       normalize_model_name, estimate_cost, get_output_dir,
-                       generate_combined_filename, generate_unique_id)
-from askp.bgrun_integration import notify_query_completed, notify_multi_query_completed, update_askp_status_widget
+from .executor import execute_query, handle_multi_query, output_result, output_multi_results
+from .api import search_perplexity
+from .codecheck import handle_code_check
+from .formatters import format_json, format_markdown, format_text
+from .file_utils import format_path, get_file_stats, generate_cat_commands
+from .utils import (format_size, sanitize_filename, load_api_key, get_model_info, 
+                   normalize_model_name, estimate_cost, get_output_dir,
+                   generate_combined_filename, generate_unique_id)
+from .bgrun_integration import notify_query_completed, notify_multi_query_completed, update_askp_status_widget
 console = Console()
 VERSION = "2.4.1"
 
@@ -101,19 +101,19 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, s
         opts["deep"] = True
         opts["cleanup_component_files"] = cleanup_component_files
         opts["query"] = queries[0]
-        from askp.executor import handle_multi_query  # Ensure proper import of deep research handling
+        from .executor import handle_multi_query  # Ensure proper import of deep research handling
         res = handle_multi_query(queries, opts)
         opts["output_dir"] = final_out_dir
         if not res:
             rprint("[red]Error: Failed to process queries[/red]")
             sys.exit(1)
-        from askp.executor import output_multi_results
+        from .executor import output_multi_results
         output_multi_results(res, opts)
     elif quick and len(queries) > 1:
         combined_query = " ".join([f"Q{i+1}: {q}" for i, q in enumerate(queries)])
         if not quiet:
             rprint(f"[blue]Quick mode: Combining {len(queries)} queries into one request[/blue]")
-        from askp.executor import execute_query, output_result
+        from .executor import execute_query, output_result
         r = execute_query(combined_query, 0, opts)
         if not r:
             rprint("[red]Error: Failed to get response from Perplexity API[/red]")
@@ -121,17 +121,17 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, s
         output_result(r, opts)
     elif expand and expand > len(queries):
         rprint(f"[blue]Expanding {len(queries)} queries to {expand} total queries...[/blue]")
-        from askp.expand import generate_expanded_queries
+        from .expand import generate_expanded_queries
         queries = generate_expanded_queries(queries, expand, model=model, temperature=temperature)
     elif not single or file or len(queries) > 1:
-        from askp.executor import handle_multi_query, output_multi_results
+        from .executor import handle_multi_query, output_multi_results
         res = handle_multi_query(queries, opts)
         if not res:
             rprint("[red]Error: Failed to process queries[/red]")
             sys.exit(1)
         output_multi_results(res, opts)
     else:
-        from askp.executor import execute_query, output_result
+        from .executor import execute_query, output_result
         r = execute_query(queries[0], 0, opts)
         if not r:
             rprint("[red]Error: Failed to get response from Perplexity API[/red]")

@@ -10,16 +10,29 @@ from rich import print as rprint
 
 def format_path(filepath: str) -> str:
     """Format a file path to use tilde notation.
-Example: /Users/username/CascadeProjects/askp/file.txt -> ~/askp/file.txt"""
-    home = str(Path.home())
-    if filepath.startswith(home):
-        rel = filepath[len(home):]
-        if '/CascadeProjects/' in filepath:
-            parts = rel.split('/CascadeProjects/', 1)
-            if len(parts) > 1:
-                proj = parts[1].split('/', 1)
-                return f"~/{proj[0]}/{proj[1]}" if len(proj) > 1 else f"~/{proj[0]}"
-        return "~" + rel
+
+    Args:
+        filepath: The file path to format
+
+    Returns:
+        The formatted file path, relative to the current working directory if possible
+    """
+    # First try to make the path relative to the current directory
+    try:
+        cwd = os.getcwd()
+        rel_path = os.path.relpath(filepath, cwd)
+        # If the path doesn't go up directories, return the relative path
+        if not rel_path.startswith('..'):
+            return rel_path
+    except:
+        pass  # Fall back to other methods if relative path failed
+    
+    # Only use tilde if we couldn't make a clean relative path
+    # This prevents confusion when paths are in other user directories
+    home_dir = os.path.expanduser("~")
+    if filepath.startswith(home_dir):
+        return filepath.replace(home_dir, "~")
+    
     return filepath
 
 def get_file_stats(filepath: str) -> Tuple[int, int]:

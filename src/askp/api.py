@@ -131,10 +131,27 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
             # Log query cost if not suppressed
             if not opts.get("suppress_cost_logging", False):
                 try:
-                    from askp.cost_tracking import log_query_cost
-                    log_query_cost(q[:50], total, cost, model)
+                    log_query_success = False
+                    try:
+                        from .cost_tracking import log_query_cost
+                        log_query_cost(q[:50], total, cost, model)
+                        log_query_success = True
+                    except ImportError:
+                        # This is expected if matplotlib is not available
+                        if opts.get("verbose", False):
+                            print("Cost tracking disabled: required dependencies not available")
+                    except Exception as e:
+                        # Other errors during cost logging
+                        if opts.get("verbose", False):
+                            print(f"Warning: Failed to log query cost: {e}")
+                    
+                    # If cost tracking failed but debug mode is on, show more info
+                    if not log_query_success and opts.get("debug", False):
+                        print("Note: Cost tracking is disabled due to missing matplotlib/numpy dependencies.")
+                        print("This does not affect core functionality.")
                 except Exception as e:
-                    rprint(f"[yellow]Warning: Failed to log query cost: {e}[/yellow]")
+                    if opts.get("verbose", False):
+                        print(f"Warning: Cost logging error: {e}")
             
             # If debug mode is enabled, capture the raw response
             if opts.get("debug", False):

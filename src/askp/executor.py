@@ -16,20 +16,20 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List, Dict, Any, Tuple, Union
 from rich import print as rprint
 
-from askp.api import search_perplexity
-from askp.formatters import format_json, format_markdown, format_text
-from askp.utils import (format_size, sanitize_filename, load_api_key, get_model_info, 
-                       normalize_model_name, estimate_cost, get_output_dir,
-                       generate_combined_filename, generate_unique_id)
-from askp.file_utils import format_path, generate_cat_commands
-from askp.bgrun_integration import notify_query_completed, notify_multi_query_completed, update_askp_status_widget
+from .api import search_perplexity
+from .formatters import format_json, format_markdown, format_text
+from .utils import (format_size, sanitize_filename, load_api_key, get_model_info, 
+                   normalize_model_name, estimate_cost, get_output_dir,
+                   generate_combined_filename, generate_unique_id)
+from .file_utils import format_path, generate_cat_commands
+from .bgrun_integration import notify_query_completed, notify_multi_query_completed, update_askp_status_widget
 
 def save_result_file(query: str, result: dict, index: int, output_dir: str) -> str:
     """Save query result to a file and return the filepath."""
     import os
     import json
     from datetime import datetime
-    from askp.formatters import format_markdown, format_json
+    from .formatters import format_markdown, format_json
     
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -53,7 +53,7 @@ def append_to_combined(query: str, result: dict, index: int, output_dir: str,
     """Append result to a combined file for multi-query results."""
     import os
     from datetime import datetime
-    from askp.formatters import format_markdown
+    from .formatters import format_markdown
     
     os.makedirs(output_dir, exist_ok=True)
     with lock:
@@ -99,7 +99,7 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
 def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     """Process multiple queries in parallel."""
     print(f"\nProcessing {len(queries)} queries in parallel...")
-    from askp.utils import get_model_info
+    from .utils import get_model_info
     mi = get_model_info(opts.get("model", "sonar-pro"), opts.get("reasoning", False), opts.get("pro_reasoning", False))
     print(f"Model: {mi['model']}{' (reasoning)' if mi.get('reasoning', False) else ''} | Temp: {opts.get('temperature', 0.7)}")
     opts["suppress_model_display"] = True
@@ -149,7 +149,7 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
 
 def suggest_cat_commands(results: List[dict], output_dir: str) -> None:
     """Suggest cat commands to view result files."""
-    from askp.file_utils import generate_cat_commands
+    from .file_utils import generate_cat_commands
     cmd_groups = generate_cat_commands(results, output_dir)
     if not cmd_groups:
         return
@@ -190,10 +190,10 @@ def output_result(res: dict, opts: dict) -> None:
         rprint(f"[blue]Results saved to: {op_dir}[/blue]")
         saved_path = saved_path or res.get("metadata", {}).get("saved_path")
     if saved_path and not opts.get("quiet", False):
-        from askp.bgrun_integration import notify_query_completed
+        from .bgrun_integration import notify_query_completed
         notify_query_completed(res.get("query", ""), saved_path, res.get("model", ""),
                                res.get("tokens", 0), res.get("metadata", {}).get("cost", 0.0))
-    from askp.tips import get_formatted_tip
+    from .tips import get_formatted_tip
     if not opts.get("quiet", False) and not opts.get("multi", False):
         tip = get_formatted_tip()
         if tip:
@@ -267,7 +267,7 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         if fmt == "markdown" and not is_deep:
             suggest_cat_commands(results, out_dir)
         rprint(f"\n[blue]To view combined results: cat {rel_path}[/blue]")
-    from askp.bgrun_integration import notify_multi_query_completed, update_askp_status_widget
+    from .bgrun_integration import notify_multi_query_completed, update_askp_status_widget
     if not opts.get("quiet", False):
         tot_toks = sum(r.get("tokens", 0) for r in results if r)
         tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)

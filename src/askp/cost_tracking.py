@@ -6,10 +6,15 @@ import random
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Tuple
 from itertools import accumulate
-import matplotlib.pyplot as plt
 from collections import defaultdict
+
+# Don't import matplotlib directly - use lazy loading
+# Global flag to check if visualization is available
+HAS_MATPLOTLIB = False
+
+# Import models and utils modules that don't depend on matplotlib
 from .models import get_model_info, list_models
 from .utils import detect_model
 
@@ -18,30 +23,65 @@ COST_LOG_FILE = os.path.join(COST_LOG_DIR, "costs.jsonl")
 PROJECT_ROOTS = {"projects", "cascadeprojects", "workspace", "repos", "code"}
 NON_PROJECT_DIRS = {"src", "results", "temp", "logs", "data", "tests", "perplexity", "ask", "askd", "askp", "old"}
 
+def _try_import_matplotlib():
+    """Try to import matplotlib, return True if successful."""
+    global HAS_MATPLOTLIB, plt
+    if HAS_MATPLOTLIB:
+        return True
+        
+    try:
+        import matplotlib.pyplot as plt
+        HAS_MATPLOTLIB = True
+        return True
+    except ImportError:
+        return False
+    except Exception as e:
+        print(f"Warning: Matplotlib available but error occurred: {e}")
+        return False
+
 def ensure_log_dir():
+    """Ensure the cost log directory exists."""
     Path(COST_LOG_DIR).mkdir(parents=True, exist_ok=True)
 
-def log_query_cost(query_id: str, model_info: Dict, token_count: int, project: Optional[str] = None):
+def log_query_cost(query_id: str, token_count: int, cost: float, model: str, project: Optional[str] = None):
+    """
+    Log the cost of a query to the cost log file.
+    
+    Args:
+        query_id: Identifier for the query (usually a snippet of the query text)
+        token_count: Number of tokens used in the query
+        cost: Estimated cost of the query
+        model: The model used for the query
+        project: Optional project name for cost categorization
+    """
     ensure_log_dir()
-    cost = (token_count / 1_000_000) * model_info["cost_per_million"]
+    
     entry = {
         "timestamp": datetime.now().isoformat(),
-        "model": model_info["id"],
+        "model": model,
         "token_count": token_count,
         "cost": cost,
         "query_id": query_id
     }
     if project:
         entry["project"] = project
+    
     with open(COST_LOG_FILE, "a") as f:
         f.write(json.dumps(entry) + "\n")
+    
+    # Occasionally trigger cost analysis (1 in 50 chance)
     if random.randint(1, 50) == 1:
-        analyze_costs()
+        try:
+            analyze_costs()
+        except Exception as e:
+            print(f"Warning: Cost analysis failed: {e}")
 
 def format_cost(cost: float) -> str:
+    """Format a cost value as a dollar amount with appropriate precision."""
     return f"${cost:.2f}" if cost >= 0.1 else f"${cost:.4f}"
 
 def format_number(n: float, precision: Optional[int] = None) -> str:
+    """Format a number with commas and appropriate precision."""
     if isinstance(n, int):
         return f"{n:,}"
     if precision is None:
@@ -89,9 +129,11 @@ def get_project_from_path(path: str) -> Optional[str]:
     return None
 
 def format_date(date: datetime) -> str:
+    """Format a date as 'Month Day Year'."""
     return date.strftime("%b %d %Y")
 
 def format_date_range(start: datetime, end: datetime) -> str:
+    """Format a date range with appropriate detail level based on the range."""
     days = (end.date() - start.date()).days + 1
     dur = f" ({days}D)" if days > 1 else ""
     if start.year != end.year:
@@ -103,9 +145,11 @@ def format_date_range(start: datetime, end: datetime) -> str:
     return f"{format_date(start)}"
 
 def get_ordinal(n: int) -> str:
+    """Get the ordinal suffix for a number (1st, 2nd, 3rd, etc.)."""
     return "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
 
 def build_project_tree(projects: Dict[str, Dict]) -> Dict:
+    """Build a hierarchical tree of projects."""
     tree = {}
     for project, stats in projects.items():
         parts = project.split("/")
@@ -147,6 +191,11 @@ def load_cost_data() -> List[Dict]:
         return [json.loads(line) for line in f]
 
 def plot_monthly_costs(cost_data: List[Dict], output_path: str):
+    """Plot monthly costs to a file."""
+    if not _try_import_matplotlib():
+        print("Warning: Matplotlib not available, skipping plot.")
+        return
+        
     monthly = defaultdict(float)
     for entry in cost_data:
         month = datetime.fromisoformat(entry["timestamp"]).strftime("%Y-%m")
@@ -164,6 +213,11 @@ def plot_monthly_costs(cost_data: List[Dict], output_path: str):
     plt.close()
 
 def plot_daily_costs(cost_data: List[Dict], days: int, output_path: str):
+    """Plot daily costs for the last N days to a file."""
+    if not _try_import_matplotlib():
+        print("Warning: Matplotlib not available, skipping plot.")
+        return
+        
     now = datetime.now()
     daily = defaultdict(float)
     for entry in cost_data:
