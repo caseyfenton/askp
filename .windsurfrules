@@ -1,0 +1,35 @@
+# BGRun Last Update: 2025-04-15 07:30:31
+¶BRS¶
+
+[2025-04-15 07:30:30] 🔄 askp-multi-complete (task_1744727430_27122) PID:52546 Running
+
+[2025-04-15 07:30:30] 🔄 askp_results_widget.sh (task_1744727430_8099) PID:52491 Running
+
+
+[2025-04-15 07:28:12] 🔄 askp-multi-complete (task_1744727292_2896) PID:37780 Running
+
+[2025-04-15 07:28:12] 🔄 askp_results_widget.sh (task_1744727292_27660) PID:37666 Running
+
+
+[2025-04-15 07:18:43] 🔄 askp-multi-complete (task_1744726723_30769) PID:74172 Running
+[2025-04-15 07:18:42] 🔄 askp_results_widget.sh (task_1744726722_16289) PID:74125 Running
+
+
+[2025-04-15 07:00:54] 🔄 askp-multi-complete (task_1744725654_18642) PID:58460 Running
+¶BRE¶
+
+¶BRW:askp-results¶
+[08:52:24]
+### ASKP Results (Last 30 mins)
+- **What are the key features of the BGRun u...** [08:52:09, 771] [file:///Users/casey/perplexity_results/sample_query_result.md]
+
+*Updated every 5 minutes*
+¶BRW:askp-results¶
+
+¶BRW:windsurfrules-timestamp¶
+[08:55:49]
+### .windsurfrules Last Updated
+2025-04-08 08:55:49
+
+*This widget updates whenever BGRun modifies the rules file*
+¶BRW:windsurfrules-timestamp¶

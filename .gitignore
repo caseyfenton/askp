@@ -59,20 +59,4 @@ src/askp/complete_cli_mod.py
 src/askp/*implementation*.md
 *.code-workspace
 .qodo
-
-# Project-specific development files
-backup_files/
-changes/
-implementation_*.md
-inventory_templates/
-PROJECT_INVENTORY_*.md
-INVENTORY.md
-src_modified/
-temp_changes/
-add_*.py
-update_*.py
-apply_*.sh
-implementation_*.sh
-test_*.sh
-!tests/test_*.py
-test_parsing.py
+.dev_temp/
