@@ -24,55 +24,159 @@ from .utils import (format_size, sanitize_filename, load_api_key, get_model_info
 from .file_utils import format_path, generate_cat_commands
 from .bgrun_integration import notify_query_completed, notify_multi_query_completed, update_askp_status_widget
 
-def save_result_file(query: str, result: dict, index: int, output_dir: str) -> str:
-    """Save query result to a file and return the filepath."""
+def save_result_file(query: str, result: dict, index: int, output_dir: str, opts: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Save query result to a file and return the filepath.
+    
+    Args:
+        query: The query text
+        result: Query result dictionary
+        index: Query index
+        output_dir: Directory to save results in
+        opts: Options dictionary containing format preference
+    
+    Returns:
+        Path to the saved file
+    """
     import os
     import json
     from datetime import datetime
-    from .formatters import format_markdown, format_json
+    from .formatters import format_markdown, format_json, format_text
+    
+    opts = opts or {}
+    format_type = opts.get("format", "markdown").lower()
     
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     query_part = sanitize_filename(query[:50])
-    filename = f"query_{index+1}_{timestamp}_{query_part}.md"
+    
+    # Determine file extension and content based on format type
+    if format_type == "json":
+        file_ext = ".json"
+        content = result  # Will be JSON-serialized later
+    elif format_type == "text":
+        file_ext = ".txt"
+        content = format_text(result)
+    else:  # Default to markdown
+        file_ext = ".md"
+        content = format_markdown(result)
+    
+    # Create filename and full path
+    filename = f"query_{index+1}_{timestamp}_{query_part}{file_ext}"
     filepath = os.path.join(output_dir, filename)
     
-    content = format_markdown(result)
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(content)
-    
-    # Also save JSON version for programmatic access
-    json_filepath = os.path.join(output_dir, f"query_{index+1}_{timestamp}_{query_part}.json")
-    with open(json_filepath, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=2)
+    # Save the file in the appropriate format
+    if format_type == "json":
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(content, f, indent=2)
+    else:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
     
     return filepath
 
 def append_to_combined(query: str, result: dict, index: int, output_dir: str, 
                       lock: threading.Lock, opts: dict) -> str:
-    """Append result to a combined file for multi-query results."""
+    """
+    Append result to a combined file for multi-query results.
+    
+    Args:
+        query: The query string
+        result: Query result dictionary
+        index: Query index
+        output_dir: Directory to save results
+        lock: Thread lock for safe concurrent writes
+        opts: Options dictionary containing format preference
+        
+    Returns:
+        Path to the combined file
+    """
     import os
+    import json
     from datetime import datetime
-    from .formatters import format_markdown
+    from .formatters import format_markdown, format_json, format_text
+    from .utils import generate_combined_filename
+    
+    # Determine format type
+    format_type = opts.get("format", "markdown").lower()
     
     os.makedirs(output_dir, exist_ok=True)
     with lock:
         num_queries = opts.get("total_queries", 1)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        combined_filename = generate_combined_filename(num_queries, timestamp)
+        
+        # Use the utility function which now handles format type
+        combined_filename = generate_combined_filename(
+            [query] if index == 0 else ["query"], 
+            opts
+        )
         combined_filepath = os.path.join(output_dir, combined_filename)
         
-        if index == 0 or not os.path.exists(combined_filepath):
-            # Create a new file for the first result
+        # Handle different formats
+        if format_type == "json":
+            # For JSON, we need to build a composite structure
+            data = {}
+            if index == 0 or not os.path.exists(combined_filepath):
+                # Initialize new JSON structure
+                data = {
+                    "metadata": {
+                        "query_count": num_queries,
+                        "timestamp": timestamp
+                    },
+                    "results": []
+                }
+            else:
+                # Load existing JSON
+                try:
+                    with open(combined_filepath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except:
+                    # If file exists but is corrupt, start fresh
+                    data = {
+                        "metadata": {
+                            "query_count": num_queries,
+                            "timestamp": timestamp
+                        },
+                        "results": []
+                    }
+            
+            # Add this result
+            data["results"].append({
+                "query_index": index + 1,
+                "query_text": query,
+                "result": result
+            })
+            
+            # Write updated JSON
             with open(combined_filepath, "w", encoding="utf-8") as f:
-                f.write(f"# Combined Results ({num_queries} queries)\n\n")
+                json.dump(data, f, indent=2)
+                
+        elif format_type == "text":
+            # Plain text format
+            if index == 0 or not os.path.exists(combined_filepath):
+                # Create a new file for the first result
+                with open(combined_filepath, "w", encoding="utf-8") as f:
+                    f.write(f"Combined Results ({num_queries} queries)\n\n")
+            
+            # Append this result
+            with open(combined_filepath, "a", encoding="utf-8") as f:
+                f.write(f"\nQuery {index+1}: {query}\n\n")
+                f.write(format_text(result))
+                f.write("\n---\n")
         
-        # Append this result
-        with open(combined_filepath, "a", encoding="utf-8") as f:
-            f.write(f"\n## Query {index+1}: {query}\n\n")
-            content = format_markdown(result).replace("# ", "### ")
-            f.write(content)
-            f.write("\n---\n")
+        else:
+            # Default to markdown
+            if index == 0 or not os.path.exists(combined_filepath):
+                # Create a new file for the first result
+                with open(combined_filepath, "w", encoding="utf-8") as f:
+                    f.write(f"# Combined Results ({num_queries} queries)\n\n")
+            
+            # Append this result
+            with open(combined_filepath, "a", encoding="utf-8") as f:
+                f.write(f"\n## Query {index+1}: {query}\n\n")
+                content = format_markdown(result).replace("# ", "### ")
+                f.write(content)
+                f.write("\n---\n")
     
     return combined_filepath
 
@@ -82,7 +186,7 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
     if not res:
         return None
     od = get_output_dir()
-    rf = save_result_file(q, res, i, od)
+    rf = save_result_file(q, res, i, od, opts)
     rel_path = format_path(rf)
     res.setdefault("metadata", {})["saved_path"] = rf
     if opts.get("suppress_model_display", False):

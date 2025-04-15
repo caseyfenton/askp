@@ -78,26 +78,57 @@ def get_output_dir() -> str:
     return str(d)
 
 def generate_combined_filename(queries: list, opts: dict) -> str:
-    """Generate a descriptive filename for combined results."""
+    """
+    Generate a descriptive filename for combined results.
+    
+    Args:
+        queries: List of query strings
+        opts: Options dictionary containing format and other preferences
+        
+    Returns:
+        Filename for combined results with appropriate extension
+    """
     import re
     from datetime import datetime
+    
+    # Determine file extension based on format
+    format_type = opts.get("format", "markdown").lower()
+    if format_type == "json":
+        file_ext = ".json"
+    elif format_type == "text":
+        file_ext = ".txt"
+    else:  # Default to markdown
+        file_ext = ".md"
+    
+    # If output is specified, respect it but ensure correct extension
     if opts.get("output"):
-        return os.path.basename(opts["output"])
+        base = os.path.basename(opts["output"])
+        # Replace extension if it doesn't match the requested format
+        if not base.endswith(file_ext):
+            base_name = os.path.splitext(base)[0]
+            return f"{base_name}{file_ext}"
+        return base
+    
+    # Generate descriptive names based on queries
     if len(queries) == 1 and len(queries[0]) <= 50:
         clean = re.sub(r'[^\w\s-]', '', queries[0]).strip().replace(" ", "_")[:50]
-        return f"{clean}_combined.md"
+        return f"{clean}_combined{file_ext}"
+        
     if len(queries) > 1:
         words = []
         for q in queries[:3]:
-            for w in reversed(q.lower().split()):
+            parts = q.split()[:5]
+            for w in parts:
                 w = re.sub(r'[^\w\s-]', '', w)
                 if w not in ['what','is','the','a','an','in','of','to','for','and','or','capital'] and w not in words:
                     words.append(w)
                     break
         name = "_".join(words) + (f"_and_{len(queries)-3}_more" if len(queries)>3 else "")
-        return f"{name}_combined.md"
+        return f"{name}_combined{file_ext}"
+        
+    # Fallback to timestamp-based naming
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"combined_results_{len(queries)}q_{timestamp}.md"
+    return f"combined_results_{len(queries)}q_{timestamp}{file_ext}"
 
 def generate_unique_id(id_type="file") -> str:
     """Generate a unique ID for a file or session."""
