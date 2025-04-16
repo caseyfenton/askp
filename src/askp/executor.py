@@ -215,18 +215,39 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     if opts.get("combine"):
         if not opts.get("output"):
             opts["output"] = os.path.join(od, generate_combined_filename(queries, opts))
-    max_workers = opts.get("max_parallel", 10)
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(queries))) as ex:
-        futures = {ex.submit(execute_query, q, i, opts, lock): i for i, q in enumerate(queries)}
-        for f in futures:
+    
+    # Add a global flag to prevent concurrent progress displays
+    global_opts = opts.copy()
+    global_opts["disable_progress"] = True
+    
+    # Process queries sequentially for better user experience
+    if len(queries) <= 2:
+        # For a small number of queries, process them sequentially
+        for i, q in enumerate(queries):
             try:
-                r = f.result()
+                r = execute_query(q, i, opts, lock)
                 if r:
                     results.append(r)
                     total_tokens += r.get("tokens", 0)
-                    total_cost += r["metadata"].get("cost", 0)
+                    total_cost += r.get("metadata", {}).get("cost", 0.0)  # Safely access cost with default
             except Exception as e:
-                rprint(f"[red]Error in future: {e}[/red]")
+                rprint(f"[red]Error processing query {i+1}: {e}[/red]")
+    else:
+        # For more queries, use ThreadPoolExecutor but with safeguards
+        max_workers = opts.get("max_parallel", 10)
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(queries))) as ex:
+            futures = {ex.submit(execute_query, q, i, global_opts, lock): i for i, q in enumerate(queries)}
+            for f in futures:
+                try:
+                    r = f.result()
+                    if r:
+                        results.append(r)
+                        total_tokens += r.get("tokens", 0)
+                        # Safely access cost with a default value if missing
+                        total_cost += r.get("metadata", {}).get("cost", 0.0)
+                except Exception as e:
+                    rprint(f"[red]Error in future: {e}[/red]")
+    
     elapsed = time.time() - start
     qps = len(results)/elapsed if elapsed > 0 else 0
     od = get_output_dir()
@@ -243,12 +264,23 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
             rel_file = format_path(combined_file)
         print(f"Output file: {rel_file}")
         print(f"Queries processed: {len(results)}/{len(queries)}")
-        total_bytes = sum(len(r["results"][0].get("content", "")) if r.get("results")
-                          else len(r.get("content", "")) for r in results if r)
+        
+        # Safely calculate total bytes with error handling
+        try:
+            total_bytes = sum(len(r.get("results", [{}])[0].get("content", "")) if r.get("results") 
+                            else len(r.get("content", "")) for r in results if r)
+        except (IndexError, TypeError):
+            total_bytes = 0
+            
         print(f"Totals | {format_size(total_bytes)} | {total_tokens}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.2f} q/s)")
         suggest_cat_commands(results, od)
+    
     if results:
-        results[0]["metadata"].update({"queries_per_second": qps, "elapsed_time": elapsed, "output_dir": od})
+        results[0].setdefault("metadata", {}).update({
+            "queries_per_second": qps, 
+            "elapsed_time": elapsed, 
+            "output_dir": od
+        })
     return results
 
 def suggest_cat_commands(results: List[dict], output_dir: str) -> None:

@@ -90,13 +90,9 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     try:
         client = load_openai_client()
         
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            transient=True,
-        ) as progress:
-            progress.add_task(description="Querying Perplexity API...", total=None)
-            
+        # Only show progress if not explicitly disabled (for parallel queries)
+        if opts.get("disable_progress", False):
+            # Skip progress display for concurrent requests
             start_time = time.time()
             resp = client.chat.completions.create(
                 model=model,
@@ -105,6 +101,23 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
                 max_tokens=max_tokens
             )
             elapsed = time.time() - start_time
+        else:
+            # Use progress indicator for single requests
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                transient=True,
+            ) as progress:
+                progress.add_task(description="Querying Perplexity API...", total=None)
+                
+                start_time = time.time()
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": q}],
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                elapsed = time.time() - start_time
         
         try:
             content = resp.choices[0].message.content
