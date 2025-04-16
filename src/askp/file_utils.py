@@ -63,6 +63,7 @@ def generate_cat_commands(results: List[dict], output_dir: str = None) -> Dict[s
         return {}
     
     cmd_groups = {"View": [], "JSON": [], "All": []}
+    max_lines = 200  # Windsurf context window line limit
     
     # Check if results have saved_path metadata
     for i, res in enumerate(results):
@@ -72,13 +73,26 @@ def generate_cat_commands(results: List[dict], output_dir: str = None) -> Dict[s
         saved_path = res.get("metadata", {}).get("saved_path", "")
         if saved_path and os.path.exists(saved_path):
             rel_path = format_path(saved_path)
-            cmd_groups["View"].append(f"cat {rel_path}")
+            # Get file size and line count
+            _, line_count = get_file_stats(saved_path)
+            
+            # If file is longer than max_lines, use head command to limit output
+            if line_count > max_lines:
+                cmd_groups["View"].append(f"head -n {max_lines} {rel_path}")
+            else:
+                cmd_groups["View"].append(f"cat {rel_path}")
             
             # Check for JSON version
             json_path = saved_path.replace(".md", ".json")
             if os.path.exists(json_path):
                 rel_json_path = format_path(json_path)
-                cmd_groups["JSON"].append(f"cat {rel_json_path}")
+                _, json_line_count = get_file_stats(json_path)
+                
+                # If JSON file is longer than max_lines, use head command
+                if json_line_count > max_lines:
+                    cmd_groups["JSON"].append(f"head -n {max_lines} {rel_json_path}")
+                else:
+                    cmd_groups["JSON"].append(f"cat {rel_json_path}")
     
     # Add a command for the combined file if it exists
     if output_dir:
@@ -86,6 +100,12 @@ def generate_cat_commands(results: List[dict], output_dir: str = None) -> Dict[s
         for cf in combined_files:
             combined_path = os.path.join(output_dir, cf)
             rel_combined = format_path(combined_path)
-            cmd_groups["All"].append(f"cat {rel_combined}")
+            _, combined_line_count = get_file_stats(combined_path)
+            
+            # If combined file is longer than max_lines, use head command
+            if combined_line_count > max_lines:
+                cmd_groups["All"].append(f"head -n {max_lines} {rel_combined}")
+            else:
+                cmd_groups["All"].append(f"cat {rel_combined}")
     
     return cmd_groups
