@@ -109,26 +109,32 @@ def generate_combined_filename(queries: list, opts: dict) -> str:
             return f"{base_name}{file_ext}"
         return base
     
+    # Use timestamp for the filename for uniqueness
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    
     # Generate descriptive names based on queries
-    if len(queries) == 1 and len(queries[0]) <= 50:
-        clean = re.sub(r'[^\w\s-]', '', queries[0]).strip().replace(" ", "_")[:50]
-        return f"{clean}_combined{file_ext}"
+    if len(queries) == 1:
+        # For a single query, use a portion of the query text
+        clean = re.sub(r'[^\w\s-]', '', queries[0]).strip().replace(" ", "_")[:40]
+        return f"{clean}_{timestamp}{file_ext}"
         
     if len(queries) > 1:
+        # For multiple queries, include the count and first query keywords
+        count = len(queries)
+        sample_query = queries[0]
         words = []
-        for q in queries[:3]:
-            parts = q.split()[:5]
-            for w in parts:
-                w = re.sub(r'[^\w\s-]', '', w)
-                if w not in ['what','is','the','a','an','in','of','to','for','and','or','capital'] and w not in words:
-                    words.append(w)
-                    break
-        name = "_".join(words) + (f"_and_{len(queries)-3}_more" if len(queries)>3 else "")
-        return f"{name}_combined{file_ext}"
-        
-    # Fallback to timestamp-based naming
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"combined_results_{len(queries)}q_{timestamp}{file_ext}"
+        parts = sample_query.split()[:3]  # Take first 3 words of first query
+        for w in parts:
+            w = re.sub(r'[^\w\s-]', '', w)
+            if w not in ['what','is','the','a','an','in','of','to','for','and','or','capital'] and w not in words:
+                words.append(w)
+                
+        if words:
+            query_hint = "_".join(words)[:20]
+            return f"queries_{count}_{query_hint}_{timestamp}{file_ext}"
+            
+    # Fallback with clear count indication
+    return f"queries_{len(queries)}_{timestamp}{file_ext}"
 
 def generate_unique_id(id_type="file") -> str:
     """Generate a unique ID for a file or session."""

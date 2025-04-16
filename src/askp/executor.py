@@ -259,9 +259,9 @@ def suggest_cat_commands(results: List[dict], output_dir: str) -> None:
         return
     for group_name, commands in cmd_groups.items():
         if commands:
-            print(f"\n[blue]== {group_name} Commands ==[/blue]")
+            rprint(f"\n[blue]== {group_name} Commands ==[/blue]")
             for cmd in commands:
-                print(f"  {cmd}")
+                rprint(f"  {cmd}")
 
 def output_result(res: dict, opts: dict) -> None:
     """Output a single query result based on options."""

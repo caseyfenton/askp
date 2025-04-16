@@ -87,7 +87,14 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, s
             rprint(f"[red]Error reading query file: {e}[/red]")
             sys.exit(1)
     if query_text and not queries:
-        queries.append(" ".join(query_text) if single else " ".join(arg for arg in query_text if not arg.startswith("-")))
+        # Don't join the queries into one unless single mode is explicitly requested
+        if single:
+            queries.append(" ".join(query_text))
+        else:
+            # Process each argument as a separate query
+            for arg in query_text:
+                if not arg.startswith("-"):  # Skip anything that looks like an option flag
+                    queries.append(arg)
     elif not queries and not sys.stdin.isatty():
         queries.extend([l.strip() for l in sys.stdin.read().splitlines() if l.strip()])
     if not queries:
