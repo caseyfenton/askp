@@ -166,10 +166,11 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         ctx.exit()
     opts: Dict[str, Any] = {"verbose": verbose, "quiet": quiet, "format": format, "output": output, "num_results": num_results,
          "model": model, "temperature": temperature, "max_tokens": token_max, "reasoning": reasoning_set, 
-         "search_depth": search_depth, "combine": not no_combine or combine, "max_parallel": max_parallel, 
+         "search_depth": search_depth, "combine": not no_combine, "max_parallel": max_parallel, 
          "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set, 
          "output_dir": get_output_dir(), "multi": not single,
-         "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "debug": debug}
+         "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "debug": debug,
+         "no_combine": no_combine}
     if expand:
         opts["expand"] = expand
     if deep and deep_custom:

@@ -195,7 +195,9 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
         print(f'{i+1}: "{t}"  {format_size(bytes_count)} | {res.get("tokens", 0)}T | ${res["metadata"]["cost"]:.4f}')
     else:
         print(f"Saved: {rel_path}")
-    if opts.get("combine") and lock and i == opts.get("total_queries", 0) - 1:
+    
+    # Only create the combined file if no_combine is not set and combine is set
+    if not opts.get("no_combine", False) and opts.get("combine") and lock and i == opts.get("total_queries", 0) - 1:
         cf = append_to_combined(q, res, i, od, lock, opts)
         print(f"Combined results saved to {format_path(cf)}")
     return res
@@ -307,7 +309,7 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
                     if r:
                         results.append(r)
                         total_tokens += r.get("tokens", 0)
-                        total_cost += r.get("metadata", {}).get("cost", 0.0)  # Safely access cost with default
+                        total_cost += r.get("metadata", {}).get("cost", 0)  # Safely access cost with default
                 except Exception as e:
                     print(f"Error processing query {i+1}: {e}")
         else:
@@ -334,26 +336,20 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
         from .deep_research import process_deep_research
         return process_deep_research(results, opts)
     
-    # Combine results for single or multi queries    
-    print("\nDONE!")
-    
-    # Different output messages for single vs multiple queries
-    if len(queries) > 1:
-        combined_filename = generate_combined_filename(queries, opts)
-        combined_path = os.path.join(od, combined_filename)
-        print(f"Output file: {format_path(combined_path)}")
-        print(f"Queries processed: {len(results)}/{len(queries)}")
+    # Process the combined output only if no-combine is not set
+    if not opts.get("no_combine", False):
+        # Process the results with output_multi_results, which will create the combined file
+        output_multi_results(results, opts)
     else:
-        if results and results[0] and "metadata" in results[0] and "saved_path" in results[0]["metadata"]:
-            print(f"Output file: {format_path(results[0]['metadata']['saved_path'])}")
-    
-    # Show token usage
-    if len(results) > 0:
-        # We want to sum all token counts in results
-        total_tokens = sum(r.get("tokens", 0) for r in results if r)
-        count_text = f"{len(results)} quer{'y' if len(results) == 1 else 'ies'}"
-        cost_text = f" | ${total_cost:.4f}" if total_cost > 0 else ""
-        print(f"{count_text} | {total_tokens:,}T{cost_text} | {elapsed:.1f}s ({qps:.1f}q/s)")
+        # Just show the individual file info without creating a combined file
+        print("\nDONE!")
+        print(f"Queries processed: {len(results)}/{len(queries)}")
+        
+        # Show list of individual files
+        suggest_cat_commands(results, od)
+        
+        # Also include the stats summary
+        print(f"\n{len(results)} queries | {total_tokens:,}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.1f}q/s)")
     
     return results
 
@@ -613,7 +609,9 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         else:
             # Only show the combined results message for multiple queries, not single queries
             if len(results) > 1 or is_deep:
-                print(f"Results saved to: {rel_path}")
+                # Only mention the combined file if no_combine is not set
+                if not opts.get("no_combine", False):
+                    print(f"Results saved to: {rel_path}")
                 
                 # Only show command suggestions if we're not already viewing the content with --view
                 if fmt == "markdown" and not is_deep:
@@ -623,5 +621,12 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     if not opts.get("quiet", False):
         tot_toks = sum(r.get("tokens", 0) for r in results if r)
         tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
-        notify_multi_query_completed(len(results), rel_path, tot_toks, tot_cost)
-        update_askp_status_widget(len(results), tot_cost)
+        # Only send combined file notifications if no_combine is not set
+        if not opts.get("no_combine", False):
+            notify_multi_query_completed(len(results), rel_path, tot_toks, tot_cost)
+            update_askp_status_widget(len(results), tot_cost)
+        else:
+            # Just update the status widget without mentioning a combined file
+            update_askp_status_widget(len(results), tot_cost)
+    
+    return results
