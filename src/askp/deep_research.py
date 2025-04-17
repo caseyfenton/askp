@@ -10,7 +10,35 @@ from openai import OpenAI
 from rich import print as rprint
 
 from .utils import load_api_key
-from .executor import handle_multi_query, execute_query
+
+
+def process_deep_research(results: List[Dict], options: Dict):
+    """
+    Process deep research results and synthesize a comprehensive report.
+    
+    Args:
+        results: List of query results
+        options: Options for processing
+        
+    Returns:
+        List of processed results
+    """
+    # Get the original query and research plan
+    if not results or len(results) == 0:
+        return results
+    
+    # Extract metadata from the results
+    original_query = options.get("query", "")
+    overview = results[0]["metadata"].get("research_overview", "Deep Research Results")
+    
+    # Generate introduction and conclusion
+    synthesis = synthesize_research(original_query, results[0]["metadata"], options)
+    
+    # Add the synthesis to the results
+    results[0]["research_synthesis"] = synthesis
+    
+    # Return the processed results
+    return results
 
 
 def generate_research_plan(query: str, model: str = "sonar-pro", temperature: float = 0.7, options: Optional[Dict[str, Any]] = None):
@@ -125,6 +153,7 @@ def process_research_plan(plan: Dict, options: Dict):
     rprint(f"[blue]Processing {len(sections)} research queries...[/blue]")
     
     # Process all queries using existing multi-query handler
+    from .executor import handle_multi_query
     original_opts = options.copy()
     results = handle_multi_query(sections, options)
     
