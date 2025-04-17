@@ -31,29 +31,27 @@ def process_deep_research(results: List[Dict], options: Dict):
     original_query = options.get("query", "")
     overview = results[0]["metadata"].get("research_overview", "Deep Research Results")
     
-    # Calculate total tokens 
+    # Calculate total tokens and cost 
     total_tokens = sum(r.get("tokens", 0) for r in results if r)
-    
-    # Display summary information
-    rprint(f"\n[bold cyan]Deep Research Summary:[/bold cyan]")
-    rprint(f"Original Query: [bold]{original_query}[/bold]")
-    rprint(f"Research Overview: {overview}")
-    rprint(f"Research Queries Processed: {len(results)}")
-    rprint(f"Total Tokens: {total_tokens:,}")
+    total_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
     
     # Generate introduction and conclusion
-    rprint(f"\n[blue]Synthesizing research results...[/blue]")
+    print("\nSynthesizing research results...")
     synthesis = synthesize_research(original_query, results[0]["metadata"], options)
     
     # Add the synthesis to the results
     results[0]["research_synthesis"] = synthesis
     
-    # List all research components
-    rprint(f"\n[bold green]Research Components:[/bold green]")
-    for i, r in enumerate(results):
-        if r and "query" in r:
-            tokens = r.get("tokens", 0)
-            rprint(f"{i+1}. [green]{r['query']}[/green] [{tokens:,}T]")
+    # Display final summary
+    print("\nDeep Research Complete!")
+    print(f"Original Query: {original_query}")
+    print(f"Research Queries Processed: {len(results)}")
+    print(f"Total Tokens: {total_tokens:,}")
+    print(f"Total Cost: ${total_cost:.4f}")
+    
+    # Show the output file path
+    if "metadata" in results[0] and "saved_path" in results[0]["metadata"]:
+        print(f"Results saved to: {results[0]['metadata']['saved_path']}")
     
     # Return the processed results
     return results
@@ -129,18 +127,18 @@ def generate_research_plan(query: str, model: str = "sonar-pro", temperature: fl
                     valid_research_queries.append(research_query.strip())
             
             if valid_research_queries:
-                rprint(f"[green]Generated research plan with {len(valid_research_queries)} research queries.[/green]")
+                print(f"Generated research plan with {len(valid_research_queries)} research queries.")
                 return {"research_overview": overview, "research_sections": valid_research_queries}
             else:
-                rprint("[yellow]Warning: Could not generate research queries. Using original query.[/yellow]")
+                print("Warning: Could not generate research queries. Using original query.")
                 return {"research_overview": query, "research_sections": [query]}
             
         except json.JSONDecodeError:
-            rprint("[yellow]Warning: Could not parse deep research response as JSON. Using original query.[/yellow]")
+            print("Warning: Could not parse deep research response as JSON. Using original query.")
             return {"research_overview": query, "research_sections": [query]}
             
     except Exception as e:
-        rprint(f"[yellow]Warning: Failed to generate deep research plan: {e}. Using original query.[/yellow]")
+        print(f"Warning: Failed to generate deep research plan: {e}. Using original query.")
         return {"research_overview": query, "research_sections": [query]}
 
 
@@ -156,22 +154,22 @@ def process_research_plan(plan: Dict, options: Dict):
         A list of query results
     """
     if not plan or not isinstance(plan, dict):
-        rprint("[red]Error: Invalid research plan[/red]")
+        print("Error: Invalid research plan")
         return []
     
     overview = plan.get("research_overview", "")
     sections = plan.get("research_sections", [])
     
     if not sections:
-        rprint("[red]Error: No research sections found in plan[/red]")
+        print("Error: No research sections found in plan")
         return []
     
     # Print research plan overview
-    rprint(f"\n[bold cyan]Research Plan:[/bold cyan]")
-    rprint(f"[bold]Overview:[/bold] {overview}")
-    rprint(f"[bold]Research Queries:[/bold]")
+    print("\nResearch Plan:")
+    print(f"Overview: {overview}")
+    print(f"Research Queries:")
     for i, section in enumerate(sections):
-        rprint(f"{i+1}. [green]{section}[/green]")
+        print(f"{i+1}. {section}")
     
     # Process all queries using existing multi-query handler
     from .executor import handle_multi_query
@@ -188,12 +186,6 @@ def process_research_plan(plan: Dict, options: Dict):
     
     # Process all the research queries
     results = handle_multi_query(sections, original_opts)
-    
-    # Display results summary
-    if results:
-        total_tokens = sum(r.get("tokens", 0) for r in results if r)
-        rprint(f"\n[bold green]Research Queries Complete:[/bold green] {len(results)}/{len(sections)}")
-        rprint(f"[bold]Total Tokens:[/bold] {total_tokens:,}")
     
     # Store the overview and original query for synthesis
     if results:
@@ -218,6 +210,7 @@ def process_research_plan(plan: Dict, options: Dict):
 def synthesize_research(query: str, results: Dict[str, str], options: Dict[str, Any] = None) -> Dict[str, str]:
     """
     Synthesize research results into an introduction and conclusion.
+    This uses Perplexity AI to stitch together multiple research components into a cohesive document.
     
     Args:
         query: The original query
@@ -240,6 +233,8 @@ def synthesize_research(query: str, results: Dict[str, str], options: Dict[str, 
         
         # Create prompt for synthesis
         synthesis_prompt = _create_synthesis_prompt(query, overview, results)
+        
+        print("Creating introduction and conclusion using Perplexity API...")
         
         # Request synthesis from API
         response = client.chat.completions.create(
@@ -286,14 +281,14 @@ def synthesize_research(query: str, results: Dict[str, str], options: Dict[str, 
             }
             
         except json.JSONDecodeError:
-            rprint("[yellow]Warning: Could not parse synthesis response as JSON. Generating basic synthesis.[/yellow]")
+            print("Warning: Could not parse synthesis response as JSON. Generating basic synthesis.")
             return {
                 "introduction": f"# Introduction\n\nThis is a deep research report on: {query}\n\n{overview}",
                 "conclusion": "# Conclusion\n\nThis concludes our research on this topic."
             }
             
     except Exception as e:
-        rprint(f"[yellow]Warning: Failed to synthesize research: {e}. Generating basic synthesis.[/yellow]")
+        print(f"Warning: Failed to synthesize research: {e}. Generating basic synthesis.")
         return {
             "introduction": f"# Introduction\n\nThis is a deep research report on: {query}\n\n{overview}",
             "conclusion": "# Conclusion\n\nThis concludes our research on this topic."

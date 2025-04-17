@@ -131,7 +131,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         opts["expand"] = expand
     if deep:
         if not quiet:
-            rprint("[blue]Deep research mode enabled.[/blue]")
+            print("Deep research mode enabled.")
         if not reasoning_set:
             opts["model"] = "sonar-reasoning-pro"
         comp_dir = os.path.join(opts["output_dir"], "components")
@@ -145,36 +145,36 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         res = handle_multi_query(queries, opts)
         opts["output_dir"] = final_out_dir
         if not res:
-            rprint("[red]Error: Failed to process queries[/red]")
+            print("Error: Failed to process queries")
             sys.exit(1)
         from .executor import output_multi_results
         output_multi_results(res, opts)
     elif quick and len(queries) > 1:
         combined_query = " ".join([f"Q{i+1}: {q}" for i, q in enumerate(queries)])
         if not quiet:
-            rprint(f"[blue]Quick mode: Combining {len(queries)} queries into one request[/blue]")
+            print(f"Quick mode: Combining {len(queries)} queries into one request")
         from .executor import execute_query, output_result
         r = execute_query(combined_query, 0, opts)
         if not r:
-            rprint("[red]Error: Failed to get response from Perplexity API[/red]")
+            print("Error: Failed to get response from Perplexity API")
             sys.exit(1)
         output_result(r, opts)
     elif expand and expand > len(queries):
-        rprint(f"[blue]Expanding {len(queries)} queries to {expand} total queries...[/blue]")
+        print(f"Expanding {len(queries)} queries to {expand} total queries...")
         from .expand import generate_expanded_queries
         queries = generate_expanded_queries(queries, expand, model=model, temperature=temperature)
     elif not single or file or len(queries) > 1:
         from .executor import handle_multi_query, output_multi_results
         res = handle_multi_query(queries, opts)
         if not res:
-            rprint("[red]Error: Failed to process queries[/red]")
+            print("Error: Failed to process queries")
             sys.exit(1)
         output_multi_results(res, opts)
     else:
         from .executor import execute_query, output_result
         r = execute_query(queries[0], 0, opts)
         if not r:
-            rprint("[red]Error: Failed to get response from Perplexity API[/red]")
+            print("Error: Failed to get response from Perplexity API")
             sys.exit(1)
         output_result(r, opts)
 

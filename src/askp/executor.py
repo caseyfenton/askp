@@ -192,12 +192,12 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
     if opts.get("suppress_model_display", False):
         t = q[:40] + "..." if len(q) > 40 else q
         bytes_count = len(res["results"][0].get("content", "")) if res.get("results") else len(res.get("content", ""))
-        rprint(f'{i+1}: "{t}"  {format_size(bytes_count)} | {res.get("tokens", 0)}T | ${res["metadata"]["cost"]:.4f}')
+        print(f'{i+1}: "{t}"  {format_size(bytes_count)} | {res.get("tokens", 0)}T | ${res["metadata"]["cost"]:.4f}')
     else:
-        rprint(f"[green]Saved: {rel_path}[/green]")
+        print(f"Saved: {rel_path}")
     if opts.get("combine") and lock and i == opts.get("total_queries", 0) - 1:
         cf = append_to_combined(q, res, i, od, lock, opts)
-        rprint(f"[green]Combined results saved to {format_path(cf)}[/green]")
+        print(f"Combined results saved to {format_path(cf)}")
     return res
 
 def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
@@ -263,20 +263,20 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
                 
                 content_lines = result["content"].split('\n')
                 
-                rprint("\n[bold cyan]Query Result:[/bold cyan]")
+                print("\nQuery Result:")
                 
                 if len(content_lines) > max_lines:
                     # Show limited content with message about remaining lines
                     for line in content_lines[:max_lines]:
-                        rprint(line)
+                        print(line)
                     remaining = len(content_lines) - max_lines
-                    rprint(f"\n[yellow]... {remaining} more lines not shown.[/yellow]")
-                    rprint(f"[yellow]To view full results: cat {result.get('metadata', {}).get('saved_path', '')}[/yellow]")
+                    print(f"\n... {remaining} more lines not shown.")
+                    print(f"To view full results: cat {result.get('metadata', {}).get('saved_path', '')}")
                 else:
                     # Show all content
-                    rprint(result["content"])
+                    print(result["content"])
                 
-                rprint("\n")
+                print("\n")
     else:
         # For multiple queries, use parallel processing
         od = get_output_dir(opts.get("output_dir"))
@@ -297,7 +297,7 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
                         total_tokens += r.get("tokens", 0)
                         total_cost += r.get("metadata", {}).get("cost", 0.0)  # Safely access cost with default
                 except Exception as e:
-                    rprint(f"[red]Error processing query {i+1}: {e}[/red]")
+                    print(f"Error processing query {i+1}: {e}")
         else:
             # For more queries, use ThreadPoolExecutor but with safeguards
             with ThreadPoolExecutor(max_workers=min(max_parallel, len(queries))) as ex:
@@ -311,7 +311,7 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
                             # Safely access cost with a default value if missing
                             total_cost += r.get("metadata", {}).get("cost", 0.0)
                     except Exception as e:
-                        rprint(f"[red]Error in future: {e}[/red]")
+                        print(f"Error in future: {e}")
     
     elapsed = time.time() - start_time
     qps = len(results)/elapsed if elapsed > 0 else 0
@@ -323,17 +323,17 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
         return process_deep_research(results, opts)
     
     # Combine results for single or multi queries    
-    rprint(f"\nDONE!")
+    print("\nDONE!")
     
     # Different output messages for single vs multiple queries
     if len(queries) > 1:
         combined_filename = generate_combined_filename(queries, opts)
         combined_path = os.path.join(od, combined_filename)
-        rprint(f"Output file: {format_path(combined_path)}")
-        rprint(f"Queries processed: {len(results)}/{len(queries)}")
+        print(f"Output file: {format_path(combined_path)}")
+        print(f"Queries processed: {len(results)}/{len(queries)}")
     else:
         if results and results[0] and "metadata" in results[0] and "saved_path" in results[0]["metadata"]:
-            rprint(f"Output file: {format_path(results[0]['metadata']['saved_path'])}")
+            print(f"Output file: {format_path(results[0]['metadata']['saved_path'])}")
     
     # Show token usage
     if len(results) > 0:
@@ -341,7 +341,7 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
         total_tokens = sum(r.get("tokens", 0) for r in results if r)
         count_text = f"{len(results)} quer{'y' if len(results) == 1 else 'ies'}"
         cost_text = f" | ${total_cost:.4f}" if total_cost > 0 else ""
-        rprint(f"{count_text} | {total_tokens:,}T{cost_text} | {elapsed:.1f}s ({qps:.1f}q/s)")
+        print(f"{count_text} | {total_tokens:,}T{cost_text} | {elapsed:.1f}s ({qps:.1f}q/s)")
     
     # Only create the combined output file for multiple files
     create_combined_outputs(results, queries, opts)
@@ -356,9 +356,9 @@ def suggest_cat_commands(results: List[dict], output_dir: str) -> None:
         return
     for group_name, commands in cmd_groups.items():
         if commands:
-            rprint(f"\n[blue]== {group_name} Commands ==[/blue]")
+            print(f"\n== {group_name} Commands ==")
             for cmd in commands:
-                rprint(f"  {cmd}")
+                print(f"  {cmd}")
 
 def output_result(res: dict, opts: dict) -> None:
     """Output a single query result."""
@@ -375,9 +375,9 @@ def output_result(res: dict, opts: dict) -> None:
     # For human-readable output (--human), directly display the content in the terminal
     if opts.get("human", False) and not opts.get("quiet", False) and fmt != "json":
         if "content" in res:
-            rprint("\n[bold cyan]Query Result:[/bold cyan]")
-            rprint(res["content"])
-            rprint("\n")
+            print("\nQuery Result:")
+            print(res["content"])
+            print("\n")
     
     # Save to file if output is specified
     saved_path = None
@@ -387,13 +387,13 @@ def output_result(res: dict, opts: dict) -> None:
                 f.write(out)
             saved_path = opts["output"]
         except PermissionError:
-            rprint(f"[red]Error: Permission denied writing to {opts['output']}[/red]")
+            print(f"Error: Permission denied writing to {opts['output']}")
     else:
         import click
         click.echo(out)
     if not opts.get("quiet", False) and fmt != "json":
         op_dir = format_path(get_output_dir())
-        rprint(f"[blue]Results saved to: {op_dir}[/blue]")
+        print(f"Results saved to: {op_dir}")
         saved_path = saved_path or res.get("metadata", {}).get("saved_path")
     if saved_path and not opts.get("quiet", False):
         from .bgrun_integration import notify_query_completed
@@ -403,7 +403,7 @@ def output_result(res: dict, opts: dict) -> None:
     if not opts.get("quiet", False) and not opts.get("multi", False):
         tip = get_formatted_tip()
         if tip:
-            rprint(tip)
+            print(tip)
 
 def output_multi_results(results: List[dict], opts: dict) -> None:
     """Combine and output results from multiple queries to a file."""
@@ -480,7 +480,7 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         with open(out_file, "w", encoding="utf-8") as f:
             f.write(out)
     except PermissionError:
-        rprint(f"[red]Error: Permission denied writing to {out_file}[/red]")
+        print(f"Error: Permission denied writing to {out_file}")
         return
     rel_path = format_path(out_file)
     
@@ -488,31 +488,32 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     if not opts.get("quiet", False):
         if opts.get("view") and fmt == "markdown":
             # Display content directly if --view flag is used
-            rprint("\n[bold cyan]Query Results:[/bold cyan]")
+            print("\nQuery Results:")
+            
             for i, r in enumerate(results):
                 if r and "query" in r and "content" in r:
                     # Get max lines to display
                     view_lines = opts.get("view_lines")
                     max_lines = view_lines if view_lines is not None else 200
                     
-                    rprint(f"\n[bold green]Query {i+1}: {r['query']}[/bold green]")
+                    print(f"\nQuery {i+1}: {r['query']}")
                     
                     # Display content with line limit
                     content_lines = r["content"].split('\n')
                     if len(content_lines) > max_lines:
                         # Show limited content with message about remaining lines
                         for line in content_lines[:max_lines]:
-                            rprint(line)
+                            print(line)
                         remaining = len(content_lines) - max_lines
-                        rprint(f"\n[yellow]... {remaining} more lines not shown.[/yellow]")
+                        print(f"\n... {remaining} more lines not shown.")
                     else:
-                        rprint(r["content"])
+                        print(r["content"])
                         
-            rprint(f"\n[blue]Full results saved to: {rel_path}[/blue]")
+            print(f"\nFull results saved to: {rel_path}")
         else:
             # Only show the combined results message for multiple queries, not single queries
             if len(results) > 1:
-                rprint(f"[green]Combined results saved to: {rel_path}[/green]")
+                print(f"Combined results saved to: {rel_path}")
                 
                 # Only show command suggestions if we're not already viewing the content with --view
                 if fmt == "markdown" and not is_deep:
