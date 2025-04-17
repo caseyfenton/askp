@@ -14,7 +14,19 @@ import openai
 from rich import print as rprint
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-ModelType = Literal["sonar", "sonar-pro", "sonar-pro-reasoning", "sonar-reasoning"]
+ModelType = Literal[
+    # Legacy Sonar Models
+    "sonar", "sonar-pro", "sonar-reasoning", "sonar-reasoning-pro", "sonar-deep-research",
+    # Llama 3.1 Sonar Models
+    "llama-3.1-sonar-small-128k-online", "llama-3.1-sonar-large-128k-online", 
+    "llama-3.1-sonar-small-128k-chat", "llama-3.1-sonar-large-128k-chat",
+    # Llama 3.1 Instruct Models
+    "llama-3.1-70b-instruct", "llama-3.1-8b-instruct",
+    # Mixtral and PPLX Models
+    "mixtral-8x7b-instruct", "pplx-7b-online", "pplx-70b-online", "pplx-7b-chat", "pplx-70b-chat",
+    # Offline Model
+    "r1-1776"
+]
 
 class PerplexityResponse(TypedDict, total=False):
     """TypedDict for Perplexity API response structure."""
@@ -60,71 +72,68 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
             - model: Model name to use (sonar, sonar-pro, etc.)
             - temperature: Temperature for generation (0.0-1.0)
             - token_max: Maximum tokens to generate
-            - reasoning: Whether to use reasoning mode
-            - pro_reasoning: Whether to use pro reasoning mode
-            - debug: Whether to capture raw API responses
-            
-    Returns:
-        Dictionary containing the response content and metadata, or
-        an error dictionary with 'error' key if the request failed
-        
-    Note:
-        If the request fails, returns a dictionary with an 'error' key
-        instead of None for better error handling in downstream functions.
-    """
-    from askp.utils import normalize_model_name, get_model_info, estimate_cost
+            - search_depth: Search depth (low, medium, high)
     
+    Returns:
+        PerplexityResponse or None if the request failed
+    """
+    import os
+    from askp.utils import normalize_model_name, get_model_info, estimate_cost
+
     model = normalize_model_name(opts.get("model", ""))
-    if opts.get("reasoning", False) and "reasoning" not in model:
-        model = "sonar-reasoning" if model == "sonar" else "sonar-pro-reasoning"
-    if opts.get("pro_reasoning", False):
-        model = "sonar-pro-reasoning"
+    
+    # No more runtime model switching - explicit model selection only
+    # Models are now directly selected by CLI flags
     
     temperature = float(opts.get("temperature", 0.7))
     max_tokens = int(opts.get("token_max", 4096))
+    search_depth = opts.get("search_depth", "medium")
     
-    if opts.get("verbose", False):
-        rprint(f"[blue]Query: {q}[/blue]")
-        rprint(f"[blue]Model: {model}, Temperature: {temperature}, Max tokens: {max_tokens}[/blue]")
+    # Prepare API client with appropriate configuration
+    client = load_openai_client()
+    if not client:
+        return None
+    
+    verbose = opts.get("verbose", False)
+    debug = opts.get("debug", False)
+    model_info = get_model_info(model)
+    
+    # Start a spinner for better UI/UX
+    if not opts.get("quiet", False):
+        rprint(f"Model: {model_info} | Temp: {temperature}")
+    
+    start_time = time.time()
     
     try:
-        client = load_openai_client()
+        if verbose and not opts.get("quiet", False):
+            rprint("[blue]Sending query to Perplexity API...[/blue]")
         
-        # Only show progress if not explicitly disabled (for parallel queries)
-        if opts.get("disable_progress", False):
-            # Skip progress display for concurrent requests
-            start_time = time.time()
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": q}],
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-            elapsed = time.time() - start_time
-        else:
-            # Use progress indicator for single requests
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                transient=True,
-            ) as progress:
-                progress.add_task(description="Querying Perplexity API...", total=None)
-                
-                start_time = time.time()
-                resp = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": q}],
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
-                elapsed = time.time() - start_time
+        # Configure additional parameters based on search depth
+        search_options = {}
+        if search_depth == "low":
+            search_options = {"system_message": "Provide a brief answer with minimal search."}
+        elif search_depth == "high":
+            search_options = {"system_message": "Provide a comprehensive answer with deep search across many sources."}
+        
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": q}
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **search_options
+        )
+        
+        end_time = time.time()
+        response_time = end_time - start_time
         
         try:
-            content = resp.choices[0].message.content
+            content = completion.choices[0].message.content
             ob = len(content.encode("utf-8"))
-            total = resp.usage.total_tokens
+            total = completion.usage.total_tokens
             
-            mi = get_model_info(model, "reasoning" in model, "pro-reasoning" in model)
+            mi = get_model_info(model)
             cost = estimate_cost(total, mi)
             
             result: PerplexityResponse = {
@@ -135,7 +144,7 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
                 "metadata": {
                     "bytes": ob,
                     "cost": cost,
-                    "elapsed_time": elapsed,
+                    "elapsed_time": response_time,
                     "timestamp": time.time(),
                     "uuid": str(uuid.uuid4())
                 }
@@ -168,14 +177,14 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
             
             # If debug mode is enabled, capture the raw response
             if opts.get("debug", False):
-                result["raw_response"] = resp
+                result["raw_response"] = completion
                 
             return result
             
         except (AttributeError, IndexError) as e:
-            diagnostic = f"Error accessing response data: {e}. Raw response: {resp}"
+            diagnostic = f"Error accessing response data: {e}. Raw response: {completion}"
             rprint(f"[red]{diagnostic}[/red]")
-            return {"error": diagnostic, "raw_response": resp}
+            return {"error": diagnostic, "raw_response": completion}
             
     except Exception as e:
         error_msg = f"Error querying Perplexity API: {e}"

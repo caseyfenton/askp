@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Tuple, Union, Any
 
 from rich import print as rprint
 from rich.console import Console
+from rich.markdown import Markdown
 from .executor import execute_query, handle_multi_query, output_result, output_multi_results
 from .api import search_perplexity
 from .codecheck import handle_code_check
@@ -40,13 +41,19 @@ VERSION = "2.4.1"
 )
 @click.option("--output", "-o", type=click.Path(), help="Output file path")
 @click.option("--num-results", "-n", type=int, default=1, help="Number of results per query")
-@click.option("--model", "-m", type=str, default="sonar-pro", help="Model to use (sonar, sonar-pro)")
-@click.option("--sonar", "-S", is_flag=True, help="Use Sonar model")
-@click.option("--sonar-pro", "-SP", is_flag=True, help="Use Sonar Pro model (default)")
+@click.option("--model", "-m", type=str, default="sonar-reasoning", help="Model to use (sonar, sonar-reasoning, sonar-reasoning-pro)")
+@click.option("--basic", "-b", is_flag=True, help="Use basic Sonar model (fastest, cheapest)")
+@click.option("--reasoning-pro", "-r", is_flag=True, help="Use enhanced reasoning model (sonar-reasoning-pro)")
+@click.option("--code", "-c", is_flag=True, help="Use code-optimized model (llama-3.1-sonar-small-128k-online)")
+@click.option("--sonar", "-S", is_flag=True, help="Use Sonar model (same as -b)")
+@click.option("--sonar-pro", "-SP", is_flag=True, help="Use Sonar Pro model (EXPENSIVE)")
+@click.option("--search-depth", "-d", type=click.Choice(["low", "medium", "high"]), default="medium",
+              help="Search depth: low (minimal), medium (standard), high (extensive)")
 @click.option("--temperature", "-t", type=float, default=0.7, help="Temperature")
 @click.option("--token_max", type=int, help="Maximum tokens to generate")
-@click.option("--reasoning", "-r", is_flag=True, help="Use reasoning mode if available")
-@click.option("--pro-reasoning", "-pr", is_flag=True, help="Use pro reasoning mode")
+@click.option("--model-help", is_flag=True, help="Show detailed model information and costs")
+@click.option("--pro-reasoning", "-pr", is_flag=True, help="Use pro reasoning mode (deprecated, use -r instead)")
+@click.option("--reasoning", "-R", is_flag=True, help="Legacy reasoning flag (deprecated, use -r instead)")
 @click.option("--single", "-s", is_flag=True, help="Force single query mode")
 @click.option("--max-parallel", type=int, default=5, help="Maximum number of parallel queries")
 @click.option("--file", "-i", type=click.Path(exists=True), help="Read queries from file, one per line")
@@ -54,28 +61,41 @@ VERSION = "2.4.1"
 @click.option("--combine", "-c", "-C", is_flag=True, help="Combine multi-query results (maintained for compatibility)")
 @click.option("--human", "-H", is_flag=True, help="Output in human-readable format")
 @click.option("--expand", "-e", type=int, help="Expand queries to specified total number by generating related queries")
-@click.option("--deep", "-d", is_flag=True, help="Perform deep research by generating a comprehensive research plan")
+@click.option("--deep", "-D", is_flag=True, help="Perform deep research by generating a comprehensive research plan")
 @click.option("--cleanup-component-files", is_flag=True, help="Move component files to trash after deep research is complete")
 @click.option("--quick", "-Q", is_flag=True, help="Combine all queries into a single request with short answers")
 @click.option("--code-check", "-cc", type=click.Path(exists=True), help="File to check for code quality/issues")
 @click.option("--debug", is_flag=True, help="Capture raw API responses for debugging")
-def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, sonar_pro, temperature, token_max, reasoning, pro_reasoning, single, max_parallel, file, no_combine, combine, human, expand, deep, cleanup_component_files, quick, code_check, debug):
+def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro, 
+        search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file, 
+        no_combine, combine, human, expand, deep, cleanup_component_files, quick, code_check, debug):
     """ASKP CLI - Search Perplexity AI from the command line"""
-    model = "sonar" if sonar else "sonar-pro" if sonar_pro else model
-    model = normalize_model_name(model)
-    
-    # Normalize format aliases
-    if format == "md":
-        format = "markdown"
-    elif format == "txt":
-        format = "text"
-        
-    if reasoning and pro_reasoning:
-        rprint("[red]Error: Cannot use both --reasoning and --pro-reasoning together[/red]")
-        sys.exit(1)
+    # Show model help if requested
     ctx = click.get_current_context()
-    token_max_set = "token_max" in ctx.params
-    reasoning_set = "reasoning" in ctx.params or "pro_reasoning" in ctx.params
+    if model_help:
+        display_model_help()
+        ctx.exit()
+        
+    # Select model based on flags (priority order)
+    if basic or sonar:
+        model = "sonar"
+    elif reasoning_pro or pro_reasoning:
+        model = "sonar-reasoning-pro"
+    elif code:
+        model = "llama-3.1-sonar-small-128k-online"
+    elif sonar_pro:
+        model = "sonar-pro"
+    elif reasoning:
+        # Handle legacy reasoning flag - try to maintain compatibility
+        if model == "sonar":
+            model = "sonar-reasoning"
+        elif model == "sonar-pro":
+            model = "sonar-reasoning-pro"
+        
+    # Normalize the model name
+    model = normalize_model_name(model)
+    token_max_set = token_max is not None
+    reasoning_set = reasoning or reasoning_pro or pro_reasoning
     queries = []
     if code_check:
         queries = handle_code_check(code_check, list(query_text), single, quiet)
@@ -101,9 +121,10 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, s
         click.echo(ctx.get_help())
         ctx.exit()
     opts: Dict[str, Any] = {"verbose": verbose, "quiet": quiet, "format": format, "output": output, "num_results": num_results,
-         "model": model, "temperature": temperature, "max_tokens": token_max, "reasoning": reasoning, "pro_reasoning": pro_reasoning,
-         "combine": not no_combine or combine, "max_parallel": max_parallel, "token_max_set_explicitly": token_max_set,
-         "reasoning_set_explicitly": reasoning_set, "output_dir": get_output_dir(), "multi": not single,
+         "model": model, "temperature": temperature, "max_tokens": token_max, "reasoning": reasoning_set, 
+         "search_depth": search_depth, "combine": not no_combine or combine, "max_parallel": max_parallel, 
+         "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set, 
+         "output_dir": get_output_dir(), "multi": not single,
          "cleanup_component_files": cleanup_component_files, "human_readable": human, "quick": quick, "debug": debug}
     if expand:
         opts["expand"] = expand
@@ -111,7 +132,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, s
         if not quiet:
             rprint("[blue]Deep research mode enabled. Generating research plan...[/blue]")
         if not reasoning_set:
-            opts["model"] = "sonar-pro"
+            opts["model"] = "sonar-reasoning-pro"
         if not quiet:
             rprint(f"[blue]Using model: {opts['model']} | Temperature: {opts['temperature']}[/blue]")
         comp_dir = os.path.join(opts["output_dir"], "components")
@@ -157,6 +178,16 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, sonar, s
             rprint("[red]Error: Failed to get response from Perplexity API[/red]")
             sys.exit(1)
         output_result(r, opts)
+
+def display_model_help():
+    """Display model help information."""
+    help_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "model_help.md")
+    if os.path.exists(help_file):
+        with open(help_file, "r") as f:
+            content = f.read()
+        console.print(Markdown(content))
+    else:
+        console.print("[yellow]Model help file not found. Visit https://github.com/caseyfenton/askp for documentation.[/yellow]")
 
 def main() -> None:
     """Main entry point for the ASKP CLI."""

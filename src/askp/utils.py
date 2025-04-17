@@ -37,22 +37,66 @@ def load_api_key() -> str:
     print("Error: Could not find Perplexity API key.")
     exit(1)
 
-def get_model_info(m: str, reasoning: bool = False, pro_reasoning: bool = False) -> dict:
-    """Return the model info dictionary based on flags."""
-    if reasoning:
-        return {"id": "reasoning", "model": "sonar-reasoning", "cost_per_million": 5.00, "reasoning": True}
-    if pro_reasoning:
-        return {"id": "pro-reasoning", "model": "sonar-reasoning-pro", "cost_per_million": 8.00, "reasoning": True}
-    return {"id": m, "model": m, "cost_per_million": 1.00, "reasoning": False}
+def get_model_info(model: str) -> str:
+    """Get information about a model for display purposes."""
+    model = normalize_model_name(model)
+    
+    if model == "sonar":
+        return "sonar (basic)"
+    elif model == "sonar-pro":
+        return "sonar-pro (EXPENSIVE)"
+    elif model == "sonar-reasoning":
+        return "sonar-reasoning (default)"
+    elif model == "sonar-reasoning-pro":
+        return "sonar-reasoning-pro (enhanced)"
+    elif model == "sonar-deep-research":
+        return "sonar-deep-research (research)"
+    elif "llama-3.1-sonar-small" in model:
+        return "llama-3.1-sonar-small (code)"
+    elif "llama-3.1-sonar-large" in model:
+        return "llama-3.1-sonar-large (advanced code)"
+    else:
+        return model
 
 def normalize_model_name(model: str) -> str:
     """Normalize model name to match Perplexity's expected format."""
     if not model:
         return "sonar-pro"
     model = model.lower().replace("-", "").replace(" ", "")
-    mappings = {"sonarpro": "sonar-pro", "sonar": "sonar", "sonarproreasoning": "sonar-pro-reasoning",
-                "prosonar": "sonar-pro", "pro": "sonar-pro", "sonarreasoning": "sonar-reasoning"}
-    return mappings.get(model, "sonar-pro")
+    
+    # Map aliases to full model names
+    mappings = {
+        # Legacy Sonar models
+        "sonarpro": "sonar-pro", 
+        "sonar": "sonar", 
+        "sonarreasoning": "sonar-reasoning",
+        "sonarreasoningpro": "sonar-reasoning-pro",
+        "sonardeepresearch": "sonar-deep-research",
+        "prosonar": "sonar-pro", 
+        "pro": "sonar-pro",
+        # Handle legacy name (deprecated)
+        "sonarproreasoning": "sonar-reasoning-pro",
+        
+        # Llama 3.1 models
+        "llama31small": "llama-3.1-sonar-small-128k-online",
+        "llama31large": "llama-3.1-sonar-large-128k-online",
+        "llama31smallchat": "llama-3.1-sonar-small-128k-chat",
+        "llama31largechat": "llama-3.1-sonar-large-128k-chat",
+        "llama3170b": "llama-3.1-70b-instruct",
+        "llama318b": "llama-3.1-8b-instruct",
+        
+        # Mixtral and PPLX models
+        "mixtral": "mixtral-8x7b-instruct",
+        "pplx7b": "pplx-7b-online",
+        "pplx70b": "pplx-70b-online",
+        "pplx7bchat": "pplx-7b-chat",
+        "pplx70bchat": "pplx-70b-chat",
+        
+        # Offline model
+        "r1": "r1-1776"
+    }
+    
+    return mappings.get(model, model)
 
 def detect_model(response_data: dict) -> str:
     """Detect which model was used based on response data."""
