@@ -343,9 +343,6 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
         cost_text = f" | ${total_cost:.4f}" if total_cost > 0 else ""
         print(f"{count_text} | {total_tokens:,}T{cost_text} | {elapsed:.1f}s ({qps:.1f}q/s)")
     
-    # Only create the combined output file for multiple files
-    create_combined_outputs(results, queries, opts)
-    
     return results
 
 def suggest_cat_commands(results: List[dict], output_dir: str) -> None:
