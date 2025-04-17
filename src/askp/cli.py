@@ -27,6 +27,48 @@ from .bgrun_integration import notify_query_completed, notify_multi_query_comple
 console = Console()
 VERSION = "2.4.1"
 
+def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_set: bool, output_dir: str, custom: bool = False) -> Tuple[bool, dict]:
+    """Set up deep research mode."""
+    opts = {
+        "temperature": temperature or 0.7,
+        "output_dir": output_dir
+    }
+    
+    if custom:
+        # Use our custom implementation (multiple parallel queries)
+        if not quiet:
+            print("Custom deep research mode enabled (multiple parallel queries).")
+        opts["deep"] = True
+        opts["custom_deep_research"] = True
+        
+        # Ensure model is set to a reasoning model if not specified
+        if not reasoning_set:
+            opts["model"] = "sonar-reasoning-pro"
+        else:
+            opts["model"] = model
+    else:
+        # Use Perplexity's built-in deep research model
+        if not quiet:
+            print("Deep research mode enabled (using Perplexity's built-in model).")
+        opts["model"] = "sonar-deep-research"
+        # We still need to process the result but we don't need the multi-query processing
+        opts["deep"] = False
+        opts["custom_deep_research"] = False
+    
+    # Create component directory for custom deep research
+    if custom:
+        comp_dir = os.path.join(opts["output_dir"], "components")
+        os.makedirs(comp_dir, exist_ok=True)
+        
+        # Remember the original output dir for final results
+        final_out_dir = opts["output_dir"]
+        opts["final_output_dir"] = final_out_dir
+        
+        # Set component dir for intermediate results
+        opts["output_dir"] = comp_dir
+    
+    return True, opts
+
 @click.command()
 @click.version_option(version=VERSION, prog_name="askp")
 @click.argument("query_text", nargs=-1, required=False)
@@ -63,13 +105,14 @@ VERSION = "2.4.1"
 @click.option("--view-lines", type=int, default=None, help="View query results with specified max lines")
 @click.option("--expand", "-e", type=int, help="Expand queries to specified total number by generating related queries")
 @click.option("--deep", "-D", is_flag=True, help="Perform deep research by generating a comprehensive research plan")
+@click.option("--deep-custom", is_flag=True, help="Use custom deep research implementation (multiple parallel queries)")
 @click.option("--cleanup-component-files", is_flag=True, help="Move component files to trash after deep research is complete")
 @click.option("--quick", "-Q", is_flag=True, help="Combine all queries into a single request with short answers")
 @click.option("--code-check", "-cc", type=click.Path(exists=True), help="File to check for code quality/issues")
 @click.option("--debug", is_flag=True, help="Capture raw API responses for debugging")
 def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro, 
         search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file, 
-        no_combine, combine, view, view_lines, expand, deep, cleanup_component_files, quick, code_check, debug):
+        no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, quick, code_check, debug):
     """ASKP CLI - Search Perplexity AI from the command line"""
     # Show model help if requested
     ctx = click.get_current_context()
@@ -129,27 +172,21 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
          "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "debug": debug}
     if expand:
         opts["expand"] = expand
-    if deep:
-        if not quiet:
-            print("Deep research mode enabled.")
-        if not reasoning_set:
-            opts["model"] = "sonar-reasoning-pro"
-        comp_dir = os.path.join(opts["output_dir"], "components")
-        os.makedirs(comp_dir, exist_ok=True)
-        final_out_dir = opts["output_dir"]
-        opts["components_dir"] = comp_dir
-        opts["deep"] = True
-        opts["cleanup_component_files"] = cleanup_component_files
-        opts["query"] = queries[0]
-        from .executor import handle_multi_query  # Ensure proper import of deep research handling
-        res = handle_multi_query(queries, opts)
-        opts["output_dir"] = final_out_dir
-        if not res:
-            print("Error: Failed to process queries")
-            sys.exit(1)
-        from .executor import output_multi_results
-        output_multi_results(res, opts)
-    elif quick and len(queries) > 1:
+    if deep and deep_custom:
+        # Both flags are set - prioritize custom
+        is_deep, deep_opts = setup_deep_research(quiet, model, temperature, reasoning_set, opts["output_dir"], custom=True)
+        opts.update(deep_opts)
+    elif deep_custom:
+        # Use custom deep research
+        is_deep, deep_opts = setup_deep_research(quiet, model, temperature, reasoning_set, opts["output_dir"], custom=True)
+        opts.update(deep_opts)
+    elif deep:
+        # Use Perplexity's built-in deep research
+        is_deep, deep_opts = setup_deep_research(quiet, model, temperature, reasoning_set, opts["output_dir"], custom=False)
+        opts.update(deep_opts)
+    
+    # Process quick mode - combine all queries into one
+    if quick and len(queries) > 1:
         combined_query = " ".join([f"Q{i+1}: {q}" for i, q in enumerate(queries)])
         if not quiet:
             print(f"Quick mode: Combining {len(queries)} queries into one request")

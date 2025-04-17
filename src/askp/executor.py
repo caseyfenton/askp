@@ -203,22 +203,34 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
 def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     """Process multiple queries in parallel."""
     # Process deep research first - this should be done before any regular processing
-    if opts.get("deep", False) and len(queries) == 1:
-        from .deep_research import generate_research_plan, process_research_plan
-        
-        # Generate the research plan
-        research_plan = generate_research_plan(
-            queries[0], 
-            model=opts.get("model", "sonar-reasoning-pro"),
-            temperature=opts.get("temperature", 0.7),
-            options=opts
-        )
-        
-        # Store the original query
-        opts["query"] = queries[0]
-        
-        # Process the research plan (this will call back to handle_multi_query with the sub-queries)
-        return process_research_plan(research_plan, opts)
+    if len(queries) == 1:
+        if opts.get("custom_deep_research", False):
+            # Use our custom deep research implementation (multiple parallel queries)
+            from .deep_research import generate_research_plan, process_research_plan
+            
+            # Generate the research plan
+            research_plan = generate_research_plan(
+                queries[0], 
+                model=opts.get("model", "sonar-reasoning-pro"),
+                temperature=opts.get("temperature", 0.7),
+                options=opts
+            )
+            
+            # Store the original query
+            opts["query"] = queries[0]
+            
+            # Process the research plan (this will call back to handle_multi_query with the sub-queries)
+            return process_research_plan(research_plan, opts)
+        elif opts.get("deep", False) and not opts.get("custom_deep_research", False):
+            # Use Perplexity's built-in deep research model (single query)
+            # No special processing needed, just execute as a normal query but with sonar-deep-research model
+            model = opts.get("model", "sonar-deep-research")
+            if not opts.get("quiet", False):
+                print(f"Using Perplexity's deep research model: {model}")
+            
+            # The sonar-deep-research model handles everything in one query
+            # Just note that we're in deep research mode for output formatting
+            opts["deep_single_query"] = True
     
     # Only mention "parallel" for multiple queries
     if len(queries) > 1:
@@ -405,80 +417,153 @@ def output_result(res: dict, opts: dict) -> None:
 def output_multi_results(results: List[dict], opts: dict) -> None:
     """Combine and output results from multiple queries to a file."""
     if not results:
+        print("No results to output!")
         return
-    out_dir = opts.get("output_dir", os.path.join(os.getcwd(), "perplexity_results"))
-    os.makedirs(out_dir, exist_ok=True)
-    is_deep = opts.get("deep", False)
-    overview = opts.get("research_overview", "")
-    if isinstance(overview, (tuple, list)):
-        overview = " ".join(str(x) for x in overview)
-        
-    fmt = opts.get("format", "markdown")
-    is_single_query = len(results) == 1
     
-    # Generate appropriate filename
-    if is_single_query and not is_deep:
-        base_name = results[0].get("query", "query").strip()
-        filename = sanitize_filename(f"{base_name[:50]}_{datetime.now().strftime('%Y%m%d-%H%M%S')}")
-        if fmt == "json":
-            filename += ".json"
-        else:
-            filename += ".md"
-    else:
-        filename = generate_combined_filename([r.get("query", f"query_{i}") for i, r in enumerate(results) if r], opts)
+    import json
+    import os
+    from datetime import datetime
     
-    out_file = os.path.join(out_dir, filename)
-    out = ""
+    opts = opts or {}
+    fmt = opts.get("format", "markdown").lower()
     
-    # Format output based on type and format
+    # Determine if this is a deep research result
+    is_deep = opts.get("deep", False) or opts.get("custom_deep_research", False) or opts.get("deep_single_query", False)
+    is_custom_deep = opts.get("custom_deep_research", False)
+    is_builtin_deep = opts.get("deep_single_query", False)
+    
     if is_deep:
-        intro = results[0] if results else {}
-        concl = results[-1] if len(results) > 1 else {}
-        if fmt == "markdown":
-            out = "# Deep Research Results\n\n"
-            if intro.get("content"):
-                out += "## Overview\n\n" + intro["content"] + "\n\n"
-            if len(results) > 2:
-                out += "## Table of Contents\n\n"
-                for i, r in enumerate(results[1:-1], 1):
-                    if r and r.get("query"):
-                        slug = re.sub(r'[^a-z0-9\s-]', '', r["query"].lower()).strip().replace(' ', '-')
-                        out += f"{i}. [{r['query']}](#{slug})\n"
-                out += "\n\n"
+        # For deep research, use a more descriptive filename
+        query = opts.get("query", "Deep_Research")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        sanitized_query = sanitize_filename(query[:30])
+        out_file = f"{sanitized_query}_{timestamp}.{fmt}"
+        
+        # Get the right output dir
+        if is_custom_deep and "final_output_dir" in opts:
+            # Use the final output dir for custom deep research
+            out_dir = opts["final_output_dir"]
+        else:
+            # Use the regular output dir
+            out_dir = opts.get("output_dir", get_output_dir())
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(out_dir, exist_ok=True)
+        out_file = os.path.join(out_dir, out_file)
+    else:
+        # For regular multi-query, use the standard approach
+        out_dir = opts.get("output_dir", get_output_dir())
+        os.makedirs(out_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Generate an appropriate filename
+        if len(results) == 1:
+            query = results[0].get("query", "Unknown")
+            query_part = sanitize_filename(query[:50])
+            out_file = f"{query_part}_{timestamp}.{fmt}"
+        else:
+            # For multiple queries, use a combined filename
+            out_file = generate_combined_filename(
+                [r.get("query", f"Query_{i+1}") for i, r in enumerate(results) if r],
+                opts
+            )
+        
+        out_file = os.path.join(out_dir, out_file)
+    
+    # Generate the output content based on format and type
+    if fmt == "json":
+        if is_deep:
+            # Create a structured JSON for deep research
+            if is_custom_deep:
+                # For custom deep research with multiple queries
+                intro = results[0] if results else {}
+                concl = results[-1] if len(results) > 1 else {}
+                combined = {
+                    "type": "custom_deep_research",
+                    "query": opts.get("query", "Unknown"),
+                    "timestamp": datetime.now().isoformat(),
+                    "overview": intro.get("content", "") if intro else "",
+                    "conclusion": concl.get("content", "") if concl else "",
+                    "sections": [{"title": r["query"], "content": r["content"]}
+                                for r in results[1:-1] if r and r.get("query") and r.get("content")]
+                }
+            else:
+                # For built-in deep research (single query)
+                combined = {
+                    "type": "deep_research",
+                    "query": opts.get("query", results[0].get("query", "Unknown")),
+                    "timestamp": datetime.now().isoformat(),
+                    "content": results[0].get("content", "") if results else ""
+                }
+            out = json.dumps(combined, indent=2)
+        else:
+            # Regular multi-query JSON
+            combined = {
+                "type": "multi_query",
+                "timestamp": datetime.now().isoformat(),
+                "num_queries": len(results),
+                "results": results
+            }
+            out = json.dumps(combined, indent=2)
+    else:
+        # Markdown/text output
+        tot_toks = sum(r.get("tokens", 0) for r in results if r)
+        tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
+        model = opts.get("model", "sonar-pro")
+        
+        if is_deep:
+            if is_custom_deep:
+                # Custom deep research with intro, sections, and conclusion
+                intro = results[0] if results else {}
+                concl = results[-1] if len(results) > 1 else {}
+                
+                out = f"# Deep Research Results: {opts.get('query', 'Research Topic')}\n\n"
+                out += f"*Generated using custom deep research with multiple parallel queries*\n\n"
+                out += f"**Model:** {model} | **Total Tokens:** {tot_toks:,} | **Total Cost:** ${tot_cost:.4f}\n\n"
+                
+                # Add overview
+                if intro and intro.get("content"):
+                    out += "## Overview\n\n" + intro["content"] + "\n\n"
+                
+                # Add the main content sections
                 for r in results[1:-1]:
                     if r and r.get("query") and r.get("content"):
-                        out += f"## {r['query']}\n\n{r['content']}\n\n---\n\n"
-            if concl.get("content"):
-                out += "## Conclusion\n\n" + concl["content"] + "\n\n"
+                        out += f"## {r['query']}\n\n" + r["content"] + "\n\n"
+                
+                # Add conclusion
+                if concl and concl.get("content"):
+                    out += "## Conclusion\n\n" + concl["content"] + "\n\n"
+            else:
+                # Built-in deep research (single query)
+                out = f"# Deep Research Results: {opts.get('query', results[0].get('query', 'Research Topic') if results else 'Research Topic')}\n\n"
+                out += f"*Generated using Perplexity's built-in deep research model*\n\n"
+                out += f"**Model:** {model} | **Total Tokens:** {tot_toks:,} | **Total Cost:** ${tot_cost:.4f}\n\n"
+                
+                # Just include the content directly
+                if results and results[0] and results[0].get("content"):
+                    out += results[0]["content"]
         else:
-            combined = {"type": "deep_research",
-                        "overview": intro.get("content", "") if intro else "",
-                        "conclusion": concl.get("content", "") if concl else "",
-                        "sections": [{"title": r["query"], "content": r["content"]}
-                                     for r in results[1:-1] if r and r.get("query") and r.get("content")]}
-            out = json.dumps(combined, indent=2)
-    else:
-        if fmt == "json":
-            combined = {"type": "multi_query", "timestamp": datetime.now().isoformat(),
-                        "num_queries": len(results), "results": results}
-            out = json.dumps(combined, indent=2)
-        else:
-            tot_toks = sum(r.get("tokens", 0) for r in results if r)
-            tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
+            # Regular multi-query output
             qps = results[0].get("metadata", {}).get("queries_per_second", 0) if results else 0
             et = results[0].get("metadata", {}).get("elapsed_time", 0) if results else 0
-            out = f"# Combined Query Results\n\nSummary:\n\nTotals | Model: {opts.get('model','sonar-pro')} | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f} | {et:.1f}s ({qps:.2f} q/s)\n\nResults saved to: {format_path(out_dir)}\n\n"
+            
+            out = f"# Combined Query Results\n\nSummary:\n\n"
+            out += f"Totals | Model: {model} | {len(results)} queries | {tot_toks:,} tokens | ${tot_cost:.4f} | {et:.1f}s ({qps:.2f} q/s)\n\n"
+            out += f"Results saved to: {format_path(out_dir)}\n\n"
+            
             for i, r in enumerate(results):
                 if not r:
                     continue
                 out += f"## Query {i+1}: {r.get('query', f'Query {i+1}')}\n\n"
                 out += (r["content"] if "content" in r else "No content available") + "\n\n"
+    
     try:
         with open(out_file, "w", encoding="utf-8") as f:
             f.write(out)
     except PermissionError:
         print(f"Error: Permission denied writing to {out_file}")
         return
+    
     rel_path = format_path(out_file)
     
     # Handle viewing content directly vs showing paths based on --view flag
@@ -487,16 +572,14 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
             # Display content directly if --view flag is used
             print("\nQuery Results:")
             
-            for i, r in enumerate(results):
-                if r and "query" in r and "content" in r:
-                    # Get max lines to display
+            if is_deep and not is_custom_deep:
+                # For built-in deep research, just show the main content
+                if results and results[0]:
+                    content = results[0].get("content", "")
                     view_lines = opts.get("view_lines")
                     max_lines = view_lines if view_lines is not None else 200
                     
-                    print(f"\nQuery {i+1}: {r['query']}")
-                    
-                    # Display content with line limit
-                    content_lines = r["content"].split('\n')
+                    content_lines = content.split('\n')
                     if len(content_lines) > max_lines:
                         # Show limited content with message about remaining lines
                         for line in content_lines[:max_lines]:
@@ -504,18 +587,38 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
                         remaining = len(content_lines) - max_lines
                         print(f"\n... {remaining} more lines not shown.")
                     else:
-                        print(r["content"])
+                        print(content)
+            else:
+                # For regular multi-query or custom deep research
+                for i, r in enumerate(results):
+                    if r and "query" in r and "content" in r:
+                        # Get max lines to display
+                        view_lines = opts.get("view_lines")
+                        max_lines = view_lines if view_lines is not None else 200
                         
+                        print(f"\nQuery {i+1}: {r['query']}")
+                        
+                        # Display content with line limit
+                        content_lines = r["content"].split('\n')
+                        if len(content_lines) > max_lines:
+                            # Show limited content with message about remaining lines
+                            for line in content_lines[:max_lines]:
+                                print(line)
+                            remaining = len(content_lines) - max_lines
+                            print(f"\n... {remaining} more lines not shown.")
+                        else:
+                            print(r["content"])
+            
             print(f"\nFull results saved to: {rel_path}")
         else:
             # Only show the combined results message for multiple queries, not single queries
-            if len(results) > 1:
-                print(f"Combined results saved to: {rel_path}")
+            if len(results) > 1 or is_deep:
+                print(f"Results saved to: {rel_path}")
                 
                 # Only show command suggestions if we're not already viewing the content with --view
                 if fmt == "markdown" and not is_deep:
                     suggest_cat_commands(results, out_dir)
-            
+    
     # Update notification systems
     if not opts.get("quiet", False):
         tot_toks = sum(r.get("tokens", 0) for r in results if r)
