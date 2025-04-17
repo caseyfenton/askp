@@ -31,9 +31,8 @@ def process_deep_research(results: List[Dict], options: Dict):
     original_query = options.get("query", "")
     overview = results[0]["metadata"].get("research_overview", "Deep Research Results")
     
-    # Calculate total tokens and cost across all queries
+    # Calculate total tokens 
     total_tokens = sum(r.get("tokens", 0) for r in results if r)
-    total_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
     
     # Display summary information
     rprint(f"\n[bold cyan]Deep Research Summary:[/bold cyan]")
@@ -41,7 +40,6 @@ def process_deep_research(results: List[Dict], options: Dict):
     rprint(f"Research Overview: {overview}")
     rprint(f"Research Queries Processed: {len(results)}")
     rprint(f"Total Tokens: {total_tokens:,}")
-    rprint(f"Total Cost: ${total_cost:.4f}")
     
     # Generate introduction and conclusion
     rprint(f"\n[blue]Synthesizing research results...[/blue]")
@@ -55,8 +53,7 @@ def process_deep_research(results: List[Dict], options: Dict):
     for i, r in enumerate(results):
         if r and "query" in r:
             tokens = r.get("tokens", 0)
-            cost = r.get("metadata", {}).get("cost", 0)
-            rprint(f"{i+1}. [green]{r['query']}[/green] [{tokens:,}T | ${cost:.4f}]")
+            rprint(f"{i+1}. [green]{r['query']}[/green] [{tokens:,}T]")
     
     # Return the processed results
     return results
@@ -176,8 +173,6 @@ def process_research_plan(plan: Dict, options: Dict):
     for i, section in enumerate(sections):
         rprint(f"{i+1}. [green]{section}[/green]")
     
-    rprint(f"\n[blue]Processing {len(sections)} research queries...[/blue]")
-    
     # Process all queries using existing multi-query handler
     from .executor import handle_multi_query
     original_opts = options.copy()
@@ -197,10 +192,8 @@ def process_research_plan(plan: Dict, options: Dict):
     # Display results summary
     if results:
         total_tokens = sum(r.get("tokens", 0) for r in results if r)
-        total_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
         rprint(f"\n[bold green]Research Queries Complete:[/bold green] {len(results)}/{len(sections)}")
         rprint(f"[bold]Total Tokens:[/bold] {total_tokens:,}")
-        rprint(f"[bold]Total Cost:[/bold] ${total_cost:.4f}")
     
     # Store the overview and original query for synthesis
     if results:
@@ -215,8 +208,7 @@ def process_research_plan(plan: Dict, options: Dict):
                 components.append({
                     "query": r["query"],
                     "content": r.get("content", ""),
-                    "tokens": r.get("tokens", 0),
-                    "cost": r.get("metadata", {}).get("cost", 0)
+                    "tokens": r.get("tokens", 0)
                 })
         results[0]["metadata"]["research_components"] = components
     

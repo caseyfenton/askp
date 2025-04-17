@@ -131,11 +131,9 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         opts["expand"] = expand
     if deep:
         if not quiet:
-            rprint("[blue]Deep research mode enabled. Generating research plan...[/blue]")
+            rprint("[blue]Deep research mode enabled.[/blue]")
         if not reasoning_set:
             opts["model"] = "sonar-reasoning-pro"
-        if not quiet:
-            rprint(f"[blue]Using model: {opts['model']} | Temperature: {opts['temperature']}[/blue]")
         comp_dir = os.path.join(opts["output_dir"], "components")
         os.makedirs(comp_dir, exist_ok=True)
         final_out_dir = opts["output_dir"]

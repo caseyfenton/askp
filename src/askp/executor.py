@@ -224,12 +224,18 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     if len(queries) > 1:
         print(f"\nProcessing {len(queries)} queries in parallel...")
     else:
-        print(f"\nProcessing query...")
+        # Only show basic processing message if not a sub-query of deep research
+        if not opts.get("processing_subqueries", False):
+            print(f"\nProcessing query...")
         
     from .utils import get_model_info
     model = opts.get("model", "sonar-reasoning")
     model_info = get_model_info(model)
-    print(f"Model: {model_info['display_name']} | Temp: {opts.get('temperature', 0.7)}")
+    
+    # Only show model info if not processing sub-queries for deep research
+    if not opts.get("processing_subqueries", False):
+        print(f"Model: {model_info['display_name']} | Temp: {opts.get('temperature', 0.7)}")
+    
     opts["suppress_model_display"] = True
     results: List[Optional[dict]] = []
     total_tokens, total_cost = 0, 0

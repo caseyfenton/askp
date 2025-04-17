@@ -55,9 +55,9 @@ def log_query_cost(query_id: str, token_count: int, cost: float, model: str, pro
         project: Optional project name for cost categorization
     """
     ensure_log_dir()
-    
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": timestamp,
         "model": model,
         "token_count": token_count,
         "cost": cost,
@@ -69,12 +69,13 @@ def log_query_cost(query_id: str, token_count: int, cost: float, model: str, pro
     with open(COST_LOG_FILE, "a") as f:
         f.write(json.dumps(entry) + "\n")
     
-    # Occasionally trigger cost analysis (1 in 50 chance)
-    if random.randint(1, 50) == 1:
-        try:
-            analyze_costs()
-        except Exception as e:
-            print(f"Warning: Cost analysis failed: {e}")
+    # Only trigger cost analysis when explicitly requested, not randomly
+    # This prevents unwanted output during deep research
+    # if random.randint(1, 50) == 1:
+    #     try:
+    #         analyze_costs()
+    #     except Exception as e:
+    #         print(f"Warning: Cost analysis failed: {e}")
 
 def format_cost(cost: float) -> str:
     """Format a cost value as a dollar amount with appropriate precision."""
