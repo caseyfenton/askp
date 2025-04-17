@@ -31,11 +31,32 @@ def process_deep_research(results: List[Dict], options: Dict):
     original_query = options.get("query", "")
     overview = results[0]["metadata"].get("research_overview", "Deep Research Results")
     
+    # Calculate total tokens and cost across all queries
+    total_tokens = sum(r.get("tokens", 0) for r in results if r)
+    total_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
+    
+    # Display summary information
+    rprint(f"\n[bold cyan]Deep Research Summary:[/bold cyan]")
+    rprint(f"Original Query: [bold]{original_query}[/bold]")
+    rprint(f"Research Overview: {overview}")
+    rprint(f"Research Queries Processed: {len(results)}")
+    rprint(f"Total Tokens: {total_tokens:,}")
+    rprint(f"Total Cost: ${total_cost:.4f}")
+    
     # Generate introduction and conclusion
+    rprint(f"\n[blue]Synthesizing research results...[/blue]")
     synthesis = synthesize_research(original_query, results[0]["metadata"], options)
     
     # Add the synthesis to the results
     results[0]["research_synthesis"] = synthesis
+    
+    # List all research components
+    rprint(f"\n[bold green]Research Components:[/bold green]")
+    for i, r in enumerate(results):
+        if r and "query" in r:
+            tokens = r.get("tokens", 0)
+            cost = r.get("metadata", {}).get("cost", 0)
+            rprint(f"{i+1}. [green]{r['query']}[/green] [{tokens:,}T | ${cost:.4f}]")
     
     # Return the processed results
     return results
@@ -149,18 +170,55 @@ def process_research_plan(plan: Dict, options: Dict):
         return []
     
     # Print research plan overview
-    rprint(f"[blue]Research Plan Overview: {overview}[/blue]")
-    rprint(f"[blue]Processing {len(sections)} research queries...[/blue]")
+    rprint(f"\n[bold cyan]Research Plan:[/bold cyan]")
+    rprint(f"[bold]Overview:[/bold] {overview}")
+    rprint(f"[bold]Research Queries:[/bold]")
+    for i, section in enumerate(sections):
+        rprint(f"{i+1}. [green]{section}[/green]")
+    
+    rprint(f"\n[blue]Processing {len(sections)} research queries...[/blue]")
     
     # Process all queries using existing multi-query handler
     from .executor import handle_multi_query
     original_opts = options.copy()
-    results = handle_multi_query(sections, options)
+    
+    # Set the processing_subqueries flag to true
+    # This will ensure the deep research processing happens after all subqueries
+    original_opts["processing_subqueries"] = True
+    
+    # Store the original query and plan for later synthesis
+    original_opts["original_query"] = original_opts.get("query", "")
+    original_opts["research_overview"] = overview
+    original_opts["research_sections"] = sections
+    
+    # Process all the research queries
+    results = handle_multi_query(sections, original_opts)
+    
+    # Display results summary
+    if results:
+        total_tokens = sum(r.get("tokens", 0) for r in results if r)
+        total_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
+        rprint(f"\n[bold green]Research Queries Complete:[/bold green] {len(results)}/{len(sections)}")
+        rprint(f"[bold]Total Tokens:[/bold] {total_tokens:,}")
+        rprint(f"[bold]Total Cost:[/bold] ${total_cost:.4f}")
     
     # Store the overview and original query for synthesis
     if results:
         results[0]["metadata"]["research_overview"] = overview
-        results[0]["metadata"]["original_query"] = original_opts.get("query", "")
+        results[0]["metadata"]["original_query"] = original_opts.get("original_query", "")
+        results[0]["metadata"]["research_sections"] = sections
+        
+        # Store all research components for reference
+        components = []
+        for i, r in enumerate(results):
+            if r and "query" in r and "content" in r:
+                components.append({
+                    "query": r["query"],
+                    "content": r.get("content", ""),
+                    "tokens": r.get("tokens", 0),
+                    "cost": r.get("metadata", {}).get("cost", 0)
+                })
+        results[0]["metadata"]["research_components"] = components
     
     return results
 

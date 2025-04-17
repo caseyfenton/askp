@@ -202,6 +202,24 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
 
 def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     """Process multiple queries in parallel."""
+    # Process deep research first - this should be done before any regular processing
+    if opts.get("deep", False) and len(queries) == 1:
+        from .deep_research import generate_research_plan, process_research_plan
+        
+        # Generate the research plan
+        research_plan = generate_research_plan(
+            queries[0], 
+            model=opts.get("model", "sonar-reasoning-pro"),
+            temperature=opts.get("temperature", 0.7),
+            options=opts
+        )
+        
+        # Store the original query
+        opts["query"] = queries[0]
+        
+        # Process the research plan (this will call back to handle_multi_query with the sub-queries)
+        return process_research_plan(research_plan, opts)
+    
     # Only mention "parallel" for multiple queries
     if len(queries) > 1:
         print(f"\nProcessing {len(queries)} queries in parallel...")
@@ -220,7 +238,7 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     start_time = time.time()
     
     # Handle single query case - no need for parallel processing
-    if len(queries) == 1 and not opts.get("deep", False):
+    if len(queries) == 1 and not opts.get("processing_subqueries", False):
         result = execute_query(queries[0], 0, opts)
         if result:
             results = [result]
@@ -293,8 +311,8 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     qps = len(results)/elapsed if elapsed > 0 else 0
     od = get_output_dir()
     
-    # Deep research synthesis is handled separately
-    if opts.get("deep", False):
+    # Deep research synthesis is handled after subqueries are processed
+    if opts.get("processing_subqueries", False):
         from .deep_research import process_deep_research
         return process_deep_research(results, opts)
     
@@ -309,24 +327,19 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
         rprint(f"Queries processed: {len(results)}/{len(queries)}")
     else:
         if results and results[0] and "metadata" in results[0] and "saved_path" in results[0]["metadata"]:
-            if not opts.get("view"):
-                # Only show this message if we're not already viewing the result
-                rprint(f"Output file: {format_path(results[0]['metadata']['saved_path'])}")
+            rprint(f"Output file: {format_path(results[0]['metadata']['saved_path'])}")
     
-    # Calculate total bytes
-    try:
-        total_bytes = sum([len(r.get("content", "").encode("utf-8")) for r in results if r])
-    except (IndexError, TypeError):
-        total_bytes = 0
-        
-    print(f"Totals | {format_size(total_bytes)} | {total_tokens}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.2f} q/s)")
+    # Show token usage
+    if len(results) > 0:
+        # We want to sum all token counts in results
+        total_tokens = sum(r.get("tokens", 0) for r in results if r)
+        count_text = f"{len(results)} quer{'y' if len(results) == 1 else 'ies'}"
+        cost_text = f" | ${total_cost:.4f}" if total_cost > 0 else ""
+        rprint(f"{count_text} | {total_tokens:,}T{cost_text} | {elapsed:.1f}s ({qps:.1f}q/s)")
     
-    if results:
-        results[0].setdefault("metadata", {}).update({
-            "queries_per_second": qps, 
-            "elapsed_time": elapsed, 
-            "output_dir": od
-        })
+    # Only create the combined output file for multiple files
+    create_combined_outputs(results, queries, opts)
+    
     return results
 
 def suggest_cat_commands(results: List[dict], output_dir: str) -> None:
