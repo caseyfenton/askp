@@ -62,7 +62,7 @@ def generate_cat_commands(results: List[dict], output_dir: str = None) -> Dict[s
     if not results:
         return {}
     
-    cmd_groups = {"View": [], "JSON": [], "All": []}
+    cmd_groups = {"View": [], "JSON": []}
     max_lines = 200  # Windsurf context window line limit
     
     # Check if results have saved_path metadata
@@ -94,18 +94,7 @@ def generate_cat_commands(results: List[dict], output_dir: str = None) -> Dict[s
                 else:
                     cmd_groups["JSON"].append(f"cat {rel_json_path}")
     
-    # Add a command for the combined file if it exists
-    if output_dir:
-        combined_files = [f for f in os.listdir(output_dir) if f.startswith("combined_results_") and f.endswith(".md")]
-        for cf in combined_files:
-            combined_path = os.path.join(output_dir, cf)
-            rel_combined = format_path(combined_path)
-            _, combined_line_count = get_file_stats(combined_path)
-            
-            # If combined file is longer than max_lines, use head command
-            if combined_line_count > max_lines:
-                cmd_groups["All"].append(f"head -n {max_lines} {rel_combined}")
-            else:
-                cmd_groups["All"].append(f"cat {rel_combined}")
+    # We're removing the display of all previous combined result files
+    # as they're not related to the current query
     
     return cmd_groups

@@ -98,9 +98,9 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     debug = opts.get("debug", False)
     model_info = get_model_info(model)
     
-    # Start a spinner for better UI/UX
-    if not opts.get("quiet", False):
-        rprint(f"Model: {model_info} | Temp: {temperature}")
+    # Only display model info if not suppressed
+    if not opts.get("suppress_model_display", False):
+        rprint(f"Model: {model_info['display_name']} | Temp: {temperature}")
     
     start_time = time.time()
     

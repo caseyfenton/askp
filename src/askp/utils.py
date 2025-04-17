@@ -9,7 +9,7 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 def format_size(s: int) -> str:
     """Format byte size with appropriate unit."""
@@ -37,26 +37,36 @@ def load_api_key() -> str:
     print("Error: Could not find Perplexity API key.")
     exit(1)
 
-def get_model_info(model: str) -> str:
-    """Get information about a model for display purposes."""
+def get_model_info(model: str) -> Dict:
+    """Get information about a model including cost and display name."""
     model = normalize_model_name(model)
     
+    model_info = {
+        "model": model,
+        "cost_per_million": 1.0,  # Default cost
+        "display_name": model
+    }
+    
     if model == "sonar":
-        return "sonar (basic)"
+        model_info["display_name"] = "sonar (basic)"
+        model_info["cost_per_million"] = 1.0
     elif model == "sonar-pro":
-        return "sonar-pro (EXPENSIVE)"
+        model_info["display_name"] = "sonar-pro (EXPENSIVE)"
+        model_info["cost_per_million"] = 15.0
     elif model == "sonar-reasoning":
-        return "sonar-reasoning (default)"
+        model_info["display_name"] = "sonar-reasoning (default)"
+        model_info["cost_per_million"] = 5.0
     elif model == "sonar-reasoning-pro":
-        return "sonar-reasoning-pro (enhanced)"
+        model_info["display_name"] = "sonar-reasoning-pro (enhanced)"
+        model_info["cost_per_million"] = 8.0
     elif model == "sonar-deep-research":
-        return "sonar-deep-research (research)"
-    elif "llama-3.1-sonar-small" in model:
-        return "llama-3.1-sonar-small (code)"
-    elif "llama-3.1-sonar-large" in model:
-        return "llama-3.1-sonar-large (advanced code)"
-    else:
-        return model
+        model_info["display_name"] = "sonar-deep-research"
+        model_info["cost_per_million"] = 8.0
+    elif "llama" in model:
+        model_info["display_name"] = "llama-3.1-sonar (code-optimized)"
+        model_info["cost_per_million"] = 5.0
+    
+    return model_info
 
 def normalize_model_name(model: str) -> str:
     """Normalize model name to match Perplexity's expected format."""
@@ -110,14 +120,86 @@ def detect_model(response_data: dict) -> str:
         return normalize_model_name(response_data["usage"].model_name)
     return "unknown"
 
-def estimate_cost(toks: int, mi: dict) -> float:
+def estimate_cost(toks: int, mi: Dict) -> float:
     """Estimate query cost based on token count."""
     return (toks/1_000_000) * mi["cost_per_million"]
 
-def get_output_dir() -> str:
-    """Return (and ensure) the output directory for query results."""
+def get_output_dir(output_dir: Optional[str] = None) -> str:
+    """Return (and ensure) the output directory for query results.
+    
+    Args:
+        output_dir: Optional custom output directory
+    
+    Returns:
+        The absolute path to the output directory
+    """
     from pathlib import Path
-    d = Path(os.getcwd()) / "perplexity_results"
+    import sys
+    import tempfile
+    
+    # If custom output directory provided, use it
+    if output_dir:
+        d = Path(output_dir).expanduser().resolve()
+    else:
+        # Try multiple approaches in this priority order:
+        # 1. Try to find the package directory if running as installed package
+        # 2. Try to find script location if running as script
+        # 3. Current working directory
+        # 4. User's home directory if we can't write to above
+        # 5. Temporary directory as last resort
+        
+        package_dir = None
+        
+        # 1. Try to find module location if running as a package
+        try:
+            import askp
+            package_dir = Path(askp.__file__).parent.parent
+            if package_dir.exists() and os.access(package_dir, os.W_OK):
+                d = package_dir / "perplexity_results"
+                d.mkdir(exist_ok=True)
+                return str(d)
+        except (ImportError, AttributeError, PermissionError):
+            pass
+            
+        # 2. Try to find script location if running directly
+        try:
+            script_path = Path(sys.argv[0]).resolve()
+            if script_path.exists() and script_path.is_file():
+                script_dir = script_path.parent
+                if os.access(script_dir, os.W_OK):
+                    d = script_dir / "perplexity_results"
+                    d.mkdir(exist_ok=True)
+                    return str(d)
+        except (IndexError, PermissionError):
+            pass
+        
+        # 3. Try current working directory
+        try:
+            cwd = Path.cwd()
+            d = cwd / "perplexity_results"
+            # Test if we can write to this directory
+            d.mkdir(exist_ok=True)
+            test_file = d / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+            return str(d)
+        except (PermissionError, OSError):
+            pass
+            
+        # 4. Try user's home directory
+        try:
+            home_dir = Path.home()
+            d = home_dir / "perplexity_results" 
+            d.mkdir(exist_ok=True)
+            return str(d)
+        except (PermissionError, OSError):
+            pass
+            
+        # 5. Last resort: use system temp directory
+        temp_dir = Path(tempfile.gettempdir())
+        d = temp_dir / "perplexity_results"
+        
+    # Ensure the directory exists
     d.mkdir(exist_ok=True)
     return str(d)
 

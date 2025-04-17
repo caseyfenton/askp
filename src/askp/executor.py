@@ -202,78 +202,124 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
 
 def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     """Process multiple queries in parallel."""
-    print(f"\nProcessing {len(queries)} queries in parallel...")
+    # Only mention "parallel" for multiple queries
+    if len(queries) > 1:
+        print(f"\nProcessing {len(queries)} queries in parallel...")
+    else:
+        print(f"\nProcessing query...")
+        
     from .utils import get_model_info
-    mi = get_model_info(opts.get("model", "sonar-pro"), opts.get("reasoning", False), opts.get("pro_reasoning", False))
-    print(f"Model: {mi['model']}{' (reasoning)' if mi.get('reasoning', False) else ''} | Temp: {opts.get('temperature', 0.7)}")
+    model = opts.get("model", "sonar-reasoning")
+    model_info = get_model_info(model)
+    print(f"Model: {model_info['display_name']} | Temp: {opts.get('temperature', 0.7)}")
     opts["suppress_model_display"] = True
     results: List[Optional[dict]] = []
     total_tokens, total_cost = 0, 0
-    start = time.time()
-    lock = threading.Lock()
-    od = get_output_dir()
-    if opts.get("combine"):
-        if not opts.get("output"):
-            opts["output"] = os.path.join(od, generate_combined_filename(queries, opts))
     
-    # Add a global flag to prevent concurrent progress displays
-    global_opts = opts.copy()
-    global_opts["disable_progress"] = True
+    # Set start time for all queries
+    start_time = time.time()
     
-    # Process queries sequentially for better user experience
-    if len(queries) <= 2:
-        # For a small number of queries, process them sequentially
-        for i, q in enumerate(queries):
-            try:
-                r = execute_query(q, i, opts, lock)
-                if r:
-                    results.append(r)
-                    total_tokens += r.get("tokens", 0)
-                    total_cost += r.get("metadata", {}).get("cost", 0.0)  # Safely access cost with default
-            except Exception as e:
-                rprint(f"[red]Error processing query {i+1}: {e}[/red]")
+    # Handle single query case - no need for parallel processing
+    if len(queries) == 1 and not opts.get("deep", False):
+        result = execute_query(queries[0], 0, opts)
+        if result:
+            results = [result]
+            total_tokens += result.get("tokens", 0)
+            total_cost += result.get("metadata", {}).get("cost", 0.0)
+            
+            # For --view flag, display content directly in terminal
+            view_enabled = opts.get("view")
+            view_lines_count = opts.get("view_lines")
+            
+            if (view_enabled or view_lines_count is not None) and not opts.get("quiet", False) and "content" in result:
+                # Default to 200 lines if just --view is used
+                max_lines = 200
+                if view_lines_count is not None:
+                    max_lines = view_lines_count
+                
+                content_lines = result["content"].split('\n')
+                
+                rprint("\n[bold cyan]Query Result:[/bold cyan]")
+                
+                if len(content_lines) > max_lines:
+                    # Show limited content with message about remaining lines
+                    for line in content_lines[:max_lines]:
+                        rprint(line)
+                    remaining = len(content_lines) - max_lines
+                    rprint(f"\n[yellow]... {remaining} more lines not shown.[/yellow]")
+                    rprint(f"[yellow]To view full results: cat {result.get('metadata', {}).get('saved_path', '')}[/yellow]")
+                else:
+                    # Show all content
+                    rprint(result["content"])
+                
+                rprint("\n")
     else:
-        # For more queries, use ThreadPoolExecutor but with safeguards
-        max_workers = opts.get("max_parallel", 10)
-        with ThreadPoolExecutor(max_workers=min(max_workers, len(queries))) as ex:
-            futures = {ex.submit(execute_query, q, i, global_opts, lock): i for i, q in enumerate(queries)}
-            for f in futures:
+        # For multiple queries, use parallel processing
+        od = get_output_dir(opts.get("output_dir"))
+        os.makedirs(od, exist_ok=True)
+        
+        from concurrent.futures import ThreadPoolExecutor
+        # Number of parallel queries
+        max_parallel = opts.get("max_parallel", 5)
+        
+        # Process queries sequentially for better user experience
+        if len(queries) <= 2:
+            # For a small number of queries, process them sequentially
+            for i, q in enumerate(queries):
                 try:
-                    r = f.result()
+                    r = execute_query(q, i, opts)
                     if r:
                         results.append(r)
                         total_tokens += r.get("tokens", 0)
-                        # Safely access cost with a default value if missing
-                        total_cost += r.get("metadata", {}).get("cost", 0.0)
+                        total_cost += r.get("metadata", {}).get("cost", 0.0)  # Safely access cost with default
                 except Exception as e:
-                    rprint(f"[red]Error in future: {e}[/red]")
+                    rprint(f"[red]Error processing query {i+1}: {e}[/red]")
+        else:
+            # For more queries, use ThreadPoolExecutor but with safeguards
+            with ThreadPoolExecutor(max_workers=min(max_parallel, len(queries))) as ex:
+                futures = {ex.submit(execute_query, q, i, opts): i for i, q in enumerate(queries)}
+                for f in futures:
+                    try:
+                        r = f.result()
+                        if r:
+                            results.append(r)
+                            total_tokens += r.get("tokens", 0)
+                            # Safely access cost with a default value if missing
+                            total_cost += r.get("metadata", {}).get("cost", 0.0)
+                    except Exception as e:
+                        rprint(f"[red]Error in future: {e}[/red]")
     
-    elapsed = time.time() - start
+    elapsed = time.time() - start_time
     qps = len(results)/elapsed if elapsed > 0 else 0
     od = get_output_dir()
+    
     # Deep research synthesis is handled separately
-    if not opts.get("deep", False):
-        print("\nDONE!")
-        if opts.get("output"):
-            rel_file = format_path(opts["output"])
-        elif len(results) == 1:
-            rel_file = format_path(results[0].get("metadata", {}).get("saved_path", od))
-        else:
-            combined_file = os.path.join(od, generate_combined_filename(
-                [r.get("query", f"query_{i}") for i, r in enumerate(results) if r], opts))
-            rel_file = format_path(combined_file)
-        print(f"Output file: {rel_file}")
-        print(f"Queries processed: {len(results)}/{len(queries)}")
+    if opts.get("deep", False):
+        from .deep_research import process_deep_research
+        return process_deep_research(results, opts)
+    
+    # Combine results for single or multi queries    
+    rprint(f"\nDONE!")
+    
+    # Different output messages for single vs multiple queries
+    if len(queries) > 1:
+        combined_filename = generate_combined_filename(queries, opts)
+        combined_path = os.path.join(od, combined_filename)
+        rprint(f"Output file: {format_path(combined_path)}")
+        rprint(f"Queries processed: {len(results)}/{len(queries)}")
+    else:
+        if results and results[0] and "metadata" in results[0] and "saved_path" in results[0]["metadata"]:
+            if not opts.get("view"):
+                # Only show this message if we're not already viewing the result
+                rprint(f"Output file: {format_path(results[0]['metadata']['saved_path'])}")
+    
+    # Calculate total bytes
+    try:
+        total_bytes = sum([len(r.get("content", "").encode("utf-8")) for r in results if r])
+    except (IndexError, TypeError):
+        total_bytes = 0
         
-        # Safely calculate total bytes with error handling
-        try:
-            total_bytes = sum(len(r.get("results", [{}])[0].get("content", "")) if r.get("results") 
-                            else len(r.get("content", "")) for r in results if r)
-        except (IndexError, TypeError):
-            total_bytes = 0
-            
-        print(f"Totals | {format_size(total_bytes)} | {total_tokens}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.2f} q/s)")
-        suggest_cat_commands(results, od)
+    print(f"Totals | {format_size(total_bytes)} | {total_tokens}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.2f} q/s)")
     
     if results:
         results[0].setdefault("metadata", {}).update({
@@ -296,26 +342,31 @@ def suggest_cat_commands(results: List[dict], output_dir: str) -> None:
                 rprint(f"  {cmd}")
 
 def output_result(res: dict, opts: dict) -> None:
-    """Output a single query result based on options."""
-    if not res or opts.get("quiet", False):
+    """Output a single query result."""
+    if not res:
         return
     fmt = opts.get("format", "markdown")
-    if fmt == "json":
-        out = format_json(res)
-    elif fmt == "text":
-        out = format_text(res)
-    else:
+    if fmt in ["markdown", "md"]:
         out = format_markdown(res)
-    if fmt in {"markdown", "text"}:
-        disp = res.get("model", "") + (" (reasoning)" if res.get("model_info", {}).get("reasoning", False) else "")
-        rprint(f"\n[blue]Results from {disp}[/blue]")
+    elif fmt == "json":
+        out = format_json(res)
+    else:  # text
+        out = format_text(res)
+    
+    # For human-readable output (--human), directly display the content in the terminal
+    if opts.get("human", False) and not opts.get("quiet", False) and fmt != "json":
+        if "content" in res:
+            rprint("\n[bold cyan]Query Result:[/bold cyan]")
+            rprint(res["content"])
+            rprint("\n")
+    
+    # Save to file if output is specified
     saved_path = None
-    if opts.get("output"):
+    if opts.get("output", None):
         try:
             with open(opts["output"], "w", encoding="utf-8") as f:
                 f.write(out)
-                saved_path = opts["output"]
-            rprint(f"[green]Output saved to {opts['output']}[/green]")
+            saved_path = opts["output"]
         except PermissionError:
             rprint(f"[red]Error: Permission denied writing to {opts['output']}[/red]")
     else:
@@ -345,10 +396,25 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     overview = opts.get("research_overview", "")
     if isinstance(overview, (tuple, list)):
         overview = " ".join(str(x) for x in overview)
-    out_file = opts["output"] if opts.get("output") else os.path.join(out_dir, generate_combined_filename(
-        [r.get("query", f"query_{i}") for i, r in enumerate(results) if r], opts))
+        
     fmt = opts.get("format", "markdown")
+    is_single_query = len(results) == 1
+    
+    # Generate appropriate filename
+    if is_single_query and not is_deep:
+        base_name = results[0].get("query", "query").strip()
+        filename = sanitize_filename(f"{base_name[:50]}_{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+        if fmt == "json":
+            filename += ".json"
+        else:
+            filename += ".md"
+    else:
+        filename = generate_combined_filename([r.get("query", f"query_{i}") for i, r in enumerate(results) if r], opts)
+    
+    out_file = os.path.join(out_dir, filename)
     out = ""
+    
+    # Format output based on type and format
     if is_deep:
         intro = results[0] if results else {}
         concl = results[-1] if len(results) > 1 else {}
@@ -398,12 +464,42 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         rprint(f"[red]Error: Permission denied writing to {out_file}[/red]")
         return
     rel_path = format_path(out_file)
+    
+    # Handle viewing content directly vs showing paths based on --view flag
     if not opts.get("quiet", False):
-        rprint(f"[green]Combined results saved to: {rel_path}[/green]")
-        if fmt == "markdown" and not is_deep:
-            suggest_cat_commands(results, out_dir)
-        rprint(f"\n[blue]To view combined results: cat {rel_path}[/blue]")
-    from .bgrun_integration import notify_multi_query_completed, update_askp_status_widget
+        if opts.get("view") and fmt == "markdown":
+            # Display content directly if --view flag is used
+            rprint("\n[bold cyan]Query Results:[/bold cyan]")
+            for i, r in enumerate(results):
+                if r and "query" in r and "content" in r:
+                    # Get max lines to display
+                    view_lines = opts.get("view_lines")
+                    max_lines = view_lines if view_lines is not None else 200
+                    
+                    rprint(f"\n[bold green]Query {i+1}: {r['query']}[/bold green]")
+                    
+                    # Display content with line limit
+                    content_lines = r["content"].split('\n')
+                    if len(content_lines) > max_lines:
+                        # Show limited content with message about remaining lines
+                        for line in content_lines[:max_lines]:
+                            rprint(line)
+                        remaining = len(content_lines) - max_lines
+                        rprint(f"\n[yellow]... {remaining} more lines not shown.[/yellow]")
+                    else:
+                        rprint(r["content"])
+                        
+            rprint(f"\n[blue]Full results saved to: {rel_path}[/blue]")
+        else:
+            # Only show the combined results message for multiple queries, not single queries
+            if len(results) > 1:
+                rprint(f"[green]Combined results saved to: {rel_path}[/green]")
+                
+                # Only show command suggestions if we're not already viewing the content with --view
+                if fmt == "markdown" and not is_deep:
+                    suggest_cat_commands(results, out_dir)
+            
+    # Update notification systems
     if not opts.get("quiet", False):
         tot_toks = sum(r.get("tokens", 0) for r in results if r)
         tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)

@@ -59,7 +59,8 @@ VERSION = "2.4.1"
 @click.option("--file", "-i", type=click.Path(exists=True), help="Read queries from file, one per line")
 @click.option("--no-combine", "-nc", is_flag=True, help="Don't combine results (default is to combine)")
 @click.option("--combine", "-c", "-C", is_flag=True, help="Combine multi-query results (maintained for compatibility)")
-@click.option("--human", "-H", is_flag=True, help="Output in human-readable format")
+@click.option("--view", is_flag=True, help="View query results directly in terminal (using default line limit)")
+@click.option("--view-lines", type=int, default=None, help="View query results with specified max lines")
 @click.option("--expand", "-e", type=int, help="Expand queries to specified total number by generating related queries")
 @click.option("--deep", "-D", is_flag=True, help="Perform deep research by generating a comprehensive research plan")
 @click.option("--cleanup-component-files", is_flag=True, help="Move component files to trash after deep research is complete")
@@ -68,7 +69,7 @@ VERSION = "2.4.1"
 @click.option("--debug", is_flag=True, help="Capture raw API responses for debugging")
 def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro, 
         search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file, 
-        no_combine, combine, human, expand, deep, cleanup_component_files, quick, code_check, debug):
+        no_combine, combine, view, view_lines, expand, deep, cleanup_component_files, quick, code_check, debug):
     """ASKP CLI - Search Perplexity AI from the command line"""
     # Show model help if requested
     ctx = click.get_current_context()
@@ -125,7 +126,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
          "search_depth": search_depth, "combine": not no_combine or combine, "max_parallel": max_parallel, 
          "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set, 
          "output_dir": get_output_dir(), "multi": not single,
-         "cleanup_component_files": cleanup_component_files, "human_readable": human, "quick": quick, "debug": debug}
+         "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "debug": debug}
     if expand:
         opts["expand"] = expand
     if deep:
