@@ -109,20 +109,22 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
             rprint("[blue]Sending query to Perplexity API...[/blue]")
         
         # Configure additional parameters based on search depth
-        search_options = {}
+        system_message = None
         if search_depth == "low":
-            search_options = {"system_message": "Provide a brief answer with minimal search."}
+            system_message = "Provide a brief answer with minimal search."
         elif search_depth == "high":
-            search_options = {"system_message": "Provide a comprehensive answer with deep search across many sources."}
+            system_message = "Provide a comprehensive answer with deep search across many sources."
+        
+        messages = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        messages.append({"role": "user", "content": q})
         
         completion = client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "user", "content": q}
-            ],
+            messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens,
-            **search_options
+            max_tokens=max_tokens
         )
         
         end_time = time.time()
