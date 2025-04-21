@@ -88,18 +88,18 @@ def generate_expanded_queries(
             all_queries = original_queries + valid_new_queries
             
             if valid_new_queries:
-                rprint(f"[green]Generated {len(valid_new_queries)} additional queries.[/green]")
+                rprint(f"Generated {len(valid_new_queries)} additional queries.")
             else:
-                rprint("[yellow]Warning: Could not generate additional queries. Using original queries.[/yellow]")
+                rprint("Warning: Could not generate additional queries. Using original queries.")
             
             return all_queries
             
         except json.JSONDecodeError:
-            rprint("[yellow]Warning: Could not parse expanded queries response as JSON. Using original queries.[/yellow]")
+            rprint("Warning: Could not parse expanded queries response as JSON. Using original queries.")
             return original_queries
             
     except Exception as e:
-        rprint(f"[yellow]Warning: Failed to expand queries: {e}. Using original queries.[/yellow]")
+        rprint(f"Warning: Failed to expand queries: {e}. Using original queries.")
         return original_queries
 
 

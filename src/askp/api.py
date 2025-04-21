@@ -106,7 +106,7 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     
     try:
         if verbose and not opts.get("quiet", False):
-            rprint("[blue]Sending query to Perplexity API...[/blue]")
+            rprint("Sending query to Perplexity API...")
         
         # Configure additional parameters based on search depth
         system_message = None
@@ -185,10 +185,10 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
             
         except (AttributeError, IndexError) as e:
             diagnostic = f"Error accessing response data: {e}. Raw response: {completion}"
-            rprint(f"[red]{diagnostic}[/red]")
+            rprint(f"{diagnostic}")
             return {"error": diagnostic, "raw_response": completion}
             
     except Exception as e:
         error_msg = f"Error querying Perplexity API: {e}"
-        rprint(f"[red]{error_msg}[/red]")
+        rprint(f"{error_msg}")
         return {"error": error_msg}

@@ -23,8 +23,8 @@ def handle_code_check(code_file: str, query_text: list, single_mode: bool, quiet
             with open(code_file, "r", encoding="utf-8", errors="replace") as f:
                 code_content = f.read(MAX_CODE_SIZE)
                 if file_size > MAX_CODE_SIZE and not quiet:
-                    rprint(f"[yellow]Warning: File size ({format_size(file_size)}) exceeds limit. "
-                           f"Truncating to {format_size(MAX_CODE_SIZE)} (~12K tokens).[/yellow]")
+                    rprint(f"Warning: File size ({format_size(file_size)}) exceeds limit. "
+                           f"Truncating to {format_size(MAX_CODE_SIZE)} (~12K tokens).")
         lang = {".py": "python", ".js": "javascript", ".ts": "typescript", ".java": "java",
                 ".cpp": "cpp", ".c": "c", ".rb": "ruby", ".go": "go", ".rs": "rust"}.get(code_path.suffix.lower(), "")
         code_block = f"```{lang}\n{code_content}\n```" if lang else f"```\n{code_content}\n```"
@@ -38,8 +38,8 @@ def handle_code_check(code_file: str, query_text: list, single_mode: bool, quiet
         else:
             queries.append(f"Review this code for issues, bugs, or improvements:\n\nCODE FROM {code_path.name}:\n{code_block}")
         if not quiet:
-            rprint(f"[blue]Code check mode: Analyzing {code_path.name} (size: {format_size(file_size)})[/blue]")
+            rprint(f"Code check mode: Analyzing {code_path.name} (size: {format_size(file_size)})")
         return queries
     except Exception as e:
-        rprint(f"[red]Error reading code file {code_file}: {e}[/red]")
+        rprint(f"Error reading code file {code_file}: {e}")
         sys.exit(1)

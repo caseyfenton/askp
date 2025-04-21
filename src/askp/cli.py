@@ -148,7 +148,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
             with open(file, "r", encoding="utf-8") as f:
                 queries.extend([l.strip() for l in f if l.strip()])
         except Exception as e:
-            rprint(f"[red]Error reading query file: {e}[/red]")
+            rprint(f"Error reading query file: {e}")
             sys.exit(1)
     if query_text and not queries:
         # Don't join the queries into one unless single mode is explicitly requested
@@ -224,7 +224,7 @@ def display_model_help():
             content = f.read()
         console.print(Markdown(content))
     else:
-        console.print("[yellow]Model help file not found. Visit https://github.com/caseyfenton/askp for documentation.[/yellow]")
+        console.print("Model help file not found. Visit https://github.com/caseyfenton/askp for documentation.")
 
 def main() -> None:
     """Main entry point for the ASKP CLI."""

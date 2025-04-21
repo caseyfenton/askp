@@ -45,7 +45,7 @@ def get_file_stats(filepath: str) -> Tuple[int, int]:
             lines = sum(1 for _ in f)
         return (size, lines)
     except Exception as e:
-        rprint(f"[yellow]Warning: Could not get stats for {filepath}: {e}[/yellow]")
+        rprint(f"Warning: Could not get stats for {filepath}: {e}")
         return (0, 0)
 
 def generate_cat_commands(results: List[dict], output_dir: str = None) -> Dict[str, List[str]]:

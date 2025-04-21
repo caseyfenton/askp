@@ -82,7 +82,7 @@ def display_costs(days: int = 7):
     costs = get_costs(days)
     
     if not costs or not costs.get("data"):
-        console.print("[red]No cost data available[/red]")
+        console.print("No cost data available")
         return
     
     table = Table(title=f"OpenAI API Costs (Last {days} Days)")

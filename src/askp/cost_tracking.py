@@ -255,7 +255,7 @@ def analyze_costs(only_period: Optional[str] = None, by_project: bool = False, c
     total_tokens = sum(e["token_count"] for e in cost_data)
     start_date = datetime.fromisoformat(cost_data[0]["timestamp"])
     end_date = datetime.fromisoformat(cost_data[-1]["timestamp"])
-    print("\n[bold blue]Cost Analysis[/bold blue]")
+    print("\nCost Analysis")
     print(f"\nPeriod: {format_date_range(start_date, end_date)}")
     print(f"Total Cost: {format_cost(total_cost)}")
     print(f"Total Tokens: {format_number(total_tokens)}")
@@ -266,7 +266,7 @@ def analyze_costs(only_period: Optional[str] = None, by_project: bool = False, c
         model_stats[m]["cost"] += entry["cost"]
         model_stats[m]["tokens"] += entry["token_count"]
         model_stats[m]["count"] += 1
-    print("\n[bold]Model Usage:[/bold]")
+    print("\nModel Usage:")
     for m, s in sorted(model_stats.items(), key=lambda x: x[1]["cost"], reverse=True):
         print(f"\n{m}:")
         print(f"  Cost: {format_cost(s['cost'])} ({(s['cost']/total_cost*100):.1f}%)")
@@ -283,10 +283,10 @@ def analyze_costs(only_period: Optional[str] = None, by_project: bool = False, c
         if tree_view:
             projects = {p: {"cost": s["cost"], "tokens": s["tokens"], "count": s["count"], "children": {}} for p, s in proj_stats.items()}
             tree = build_project_tree(projects)
-            print("\n[bold]Project Costs (Tree View):[/bold]")
+            print("\nProject Costs (Tree View):")
             print_project_tree(tree)
         else:
-            print("\n[bold]Project Costs:[/bold]")
+            print("\nProject Costs:")
             for p, s in sorted(proj_stats.items(), key=lambda x: x[1]["cost"], reverse=True):
                 if current_project and p != current_project:
                     continue

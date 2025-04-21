@@ -29,7 +29,7 @@ def should_show_tip(frequency: float = 0.3) -> bool:
 
 def format_tip(tip: str) -> str:
     """Format a tip for display."""
-    return f"\n[bright_blue]{tip}[/bright_blue]\n"
+    return f"\n{tip}\n"
 
 def get_formatted_tip(frequency: float = 0.3) -> Optional[str]:
     """Get a formatted random tip if it should be shown based on frequency."""

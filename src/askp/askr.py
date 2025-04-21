@@ -243,7 +243,7 @@ def display_results_table(files: List[Dict]):
     console = Console()
     
     if not files:
-        console.print("[yellow]No recent ASKP results found[/yellow]")
+        console.print("No recent ASKP results found")
         return
     
     table = Table(title="Recent ASKP Results")
@@ -264,9 +264,9 @@ def display_results_table(files: List[Dict]):
     
     # Show command examples
     console.print("\nCommands:")
-    console.print(f"  [green]askr show 1[/green]         # Show content of result #1")
-    console.print(f"  [green]askr show 1-3[/green]       # Show content of results #1 through #3")
-    console.print(f"  [green]askr llm 1-3[/green]        # Show LLM-optimized content of results #1-#3")
+    console.print(f"  askr show 1         # Show content of result #1")
+    console.print(f"  askr show 1-3       # Show content of results #1 through #3")
+    console.print(f"  askr llm 1-3        # Show LLM-optimized content of results #1-#3")
 
 
 def show_file_content(file_path: str, llm_mode: bool = False):
@@ -287,7 +287,7 @@ def show_file_content(file_path: str, llm_mode: bool = False):
             console.print(content)
             
     except Exception as e:
-        console.print(f"[red]Error reading file: {str(e)}[/red]")
+        console.print(f"Error reading file: {str(e)}")
 
 
 def main():
