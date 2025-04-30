@@ -55,21 +55,33 @@ pip install askp
 pip install askp[dev]
 ```
 
-### Option 2: Install from Source
+### Option 2: Install from GitHub
+
+You can install directly from GitHub without cloning the repository:
+
+```bash
+# Install the latest version from the main branch
+pip install git+https://github.com/caseyfenton/askp.git
+
+# Or a specific branch/tag/commit
+pip install git+https://github.com/caseyfenton/askp.git@some-branch
+```
+
+### Option 3: Clone and Install
 
 ```bash
 # Clone the repository
 git clone https://github.com/caseyfenton/askp.git
 cd askp
 
-# Install
+# Install in development mode (changes to code reflect immediately)
+pip install -e .
+
+# Or with development dependencies
+pip install -e ".[dev]"
+
+# Alternatively, use the install script
 ./install.sh
-```
-
-You can also use pip to install directly from GitHub:
-
-```bash
-pip install git+https://github.com/caseyfenton/askp.git
 ```
 
 ## Usage
