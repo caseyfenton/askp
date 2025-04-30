@@ -9,7 +9,7 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Union
 
 def format_size(s: int) -> str:
     """Format byte size with appropriate unit."""
@@ -108,10 +108,36 @@ def normalize_model_name(model: str) -> str:
     
     return mappings.get(model, model)
 
-def detect_model(response_data: dict) -> str:
-    """Detect which model was used based on response data."""
+def detect_model(response_data: Union[dict, str], filename: str = None) -> str:
+    """Detect which model was used based on response data or text content."""
     if not response_data:
         return "unknown"
+    
+    # Handle string input (content-based detection)
+    if isinstance(response_data, str):
+        content = response_data.lower()
+        # Check for model names in content
+        if "sonar-pro" in content or "model: sonar-pro" in content:
+            return "sonar-pro"
+        elif "pplx" in content or "pplx-api" in content or "model: pplx" in content:
+            return "pplx"
+        elif "gpt4" in content:
+            return "gpt4"
+        elif "claude" in content:
+            return "claude"
+        
+        # If filename is provided, try to detect from it
+        if filename:
+            filename = filename.lower()
+            if "sonar-pro" in filename:
+                return "sonar-pro"
+            elif "pplx" in filename:
+                return "pplx"
+        
+        # Default model
+        return "sonar"
+    
+    # Handle dictionary input (API response)
     model = response_data.get("model", "")
     if model:
         return normalize_model_name(model)

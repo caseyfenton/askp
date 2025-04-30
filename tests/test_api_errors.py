@@ -5,6 +5,8 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import json
+import io
+import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -112,19 +114,24 @@ def test_malformed_api_response_handling():
                 mock_response.usage = MagicMock(total_tokens=10)
                 mock_client.chat.completions.create.return_value = mock_response
             with patch('askp.cli.load_api_key', return_value="dummy_key"):
-                with patch('askp.cli.rprint') as mock_rprint:
-                    result = search_perplexity(f"test query {i}", {"test_mode": True})
-                    if test_case["description"] in ["Invalid JSON", "Empty response"]:
-                        error_calls = [call for call in mock_rprint.call_args_list if "Error" in str(call) or "error" in str(call)]
-                        assert len(error_calls) > 0, f"Error message should be printed for {test_case['description']}"
-                        assert result is None, f"{test_case['description']} should result in None"
+                from askp.api import search_perplexity
+                capturedOutput = io.StringIO()                  # Create StringIO object
+                sys.stdout = capturedOutput                    # Redirect stdout
+                result = search_perplexity(f"test query {i}", {"test_mode": True})
+                sys.stdout = sys.__stdout__                    # Reset stdout
+                output = capturedOutput.getvalue().strip()
+                
+                if test_case["description"] in ["Invalid JSON", "Empty response"]:
+                    # For these cases, check if result is None (indicating an error)
+                    assert result is None, f"{test_case['description']} should result in None"
+                    assert "Error" in output or "error" in output, f"Error message should be printed for {test_case['description']}"
+                else:
+                    if result is not None:
+                        assert isinstance(result, dict), f"Result should be a dict for {test_case['description']}"
                     else:
-                        if result is not None:
-                            assert isinstance(result, dict), f"Result should be a dict for {test_case['description']}"
-                        else:
-                            error_calls = [call for call in mock_rprint.call_args_list if "Error" in str(call) or "error" in str(call)]
-                            assert len(error_calls) > 0, f"Error message should be printed for {test_case['description']}"
-                        
+                        # If result is None for other cases, that's also acceptable as it indicates an error
+                        assert "Error" in output or "error" in output, f"Error message should be printed for {test_case['description']}"
+
 @pytest.mark.skip(reason="Linux testing not yet implemented")
 def test_linux_compatibility():
     """Test compatibility with Linux."""
