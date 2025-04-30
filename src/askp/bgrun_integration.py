@@ -10,12 +10,20 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+# Check if BGRun integration is enabled
+# By default, disable BGRun for PyPI installations
+ASKP_ENABLE_BGRUN = os.environ.get("ASKP_ENABLE_BGRUN", "0").lower() in ("1", "true", "yes", "on")
+
 def is_bgrun_available() -> bool:
-    """Check if bgrun is available in PATH."""
+    """Check if bgrun is available in PATH and if integration is enabled."""
+    if not ASKP_ENABLE_BGRUN:
+        return False
     return shutil.which("bgrun") is not None
 
 def get_bgrun_path() -> Optional[str]:
     """Return the path to bgrun, either from PATH or standard locations."""
+    if not ASKP_ENABLE_BGRUN:
+        return None
     bgrun_path = shutil.which("bgrun")
     if bgrun_path:
         return bgrun_path
@@ -28,6 +36,8 @@ def get_bgrun_path() -> Optional[str]:
 
 def notify_query_completed(query: str, saved_path: str, model: str, tokens: int, cost: float) -> bool:
     """Notify BGRun about query completion."""
+    if not ASKP_ENABLE_BGRUN:
+        return False
     bgrun = get_bgrun_path()
     if not bgrun:
         return False
@@ -39,6 +49,8 @@ def notify_query_completed(query: str, saved_path: str, model: str, tokens: int,
 
 def notify_multi_query_completed(num_queries: int, combined_file: str, tokens: int, cost: float) -> bool:
     """Notify BGRun about multi-query completion."""
+    if not ASKP_ENABLE_BGRUN:
+        return False
     bgrun = get_bgrun_path()
     if not bgrun:
         return False
@@ -50,6 +62,8 @@ def notify_multi_query_completed(num_queries: int, combined_file: str, tokens: i
 
 def update_askp_status_widget(query_count: int, total_cost: float, elapsed: float) -> bool:
     """Update BGRun status widget with ASKP stats."""
+    if not ASKP_ENABLE_BGRUN:
+        return False
     bgrun = get_bgrun_path()
     if not bgrun:
         return False
