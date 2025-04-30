@@ -1,10 +1,14 @@
 # ASKP - Ask Perplexity
 
+[![PyPI version](https://img.shields.io/pypi/v/askp.svg)](https://pypi.org/project/askp/)
+[![Python versions](https://img.shields.io/pypi/pyversions/askp.svg)](https://pypi.org/project/askp/)
+[![License](https://img.shields.io/github/license/caseyfenton/askp.svg)](https://github.com/caseyfenton/askp/blob/main/LICENSE)
+
 ASKP (Ask Perplexity) is a powerful command-line interface for natural language search and knowledge discovery using the Perplexity API, with built-in cost tracking and advanced features. Currently integrated with Perplexity API, with plans to support additional LLM providers like Open Router.
 
 ## Project Status
 
-**BETA**: ASKP is currently in beta development. While core functionality is stable, some features are still being refined and tested. Please report any issues you encounter.
+**STABLE**: ASKP is now available on PyPI! While core functionality is stable, some features are still being refined and tested. Please report any issues you encounter.
 
 **Cost Tracking Note**: The cost tracking feature provides an estimate based on approximate token counts (calculated as bytes divided by 3) and publicly available pricing information for the models. Actual costs may vary from these estimates. We're continuously working to improve the accuracy of these calculations.
 
@@ -60,6 +64,12 @@ cd askp
 
 # Install
 ./install.sh
+```
+
+You can also use pip to install directly from GitHub:
+
+```bash
+pip install git+https://github.com/caseyfenton/askp.git
 ```
 
 ## Usage

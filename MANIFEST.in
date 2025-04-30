@@ -3,9 +3,31 @@ include README.md
 include pyproject.toml
 include setup.py
 include MANIFEST.in
-recursive-include src *
+
+# Include only necessary source files
+recursive-include src/askp *.py
+recursive-include src *.py
+
+# Exclude specific development modules
+exclude src/askp/cli.py.enhanced
+exclude src/askp/cli_modifications.py
+exclude src/askp/codecheck.py
+exclude src/askp/complete_cli_mod.py
+exclude src/askp/debug_response.py
+exclude src/askp/enhance_cli.py
+exclude src/askp/modify_cli.py
+exclude src/askp/modify_cli_safely.py
+
+# Exclude specific patterns
+recursive-exclude src/askp *.diff *.patch *.bak *.backup *.new *.md *.code-workspace
+recursive-exclude src *.diff *.patch *.bak *.backup *.new *.md *.code-workspace
+recursive-exclude src/perplexity_results *
+recursive-exclude perplexity_results *
+
+# Exclude caches and build artifacts
 recursive-exclude src *.pyc
 recursive-exclude src/__pycache__ *
+recursive-exclude src/askp/__pycache__ *
 recursive-exclude tests *
 recursive-exclude test_results *
 recursive-exclude scripts *
@@ -15,11 +37,32 @@ recursive-exclude .github *
 recursive-exclude .vscode *
 recursive-exclude .idea *
 recursive-exclude __pycache__ *
+recursive-exclude bin *
+recursive-exclude backups *
+recursive-exclude tools *
+
+# Exclude development modules
+exclude src/analyze_costs.py
+exclude src/backfill_cost_data.py
+exclude src/cli.py
+exclude src/askp_cli.py
+exclude ask.bat
+exclude test_cli.py
+
+# Global exclusions
 global-exclude *.pyc
 global-exclude *.pyo
 global-exclude *.pyd
 global-exclude .DS_Store
 global-exclude .env
+global-exclude *.diff
+global-exclude *.patch
+global-exclude *.bak
+global-exclude *.backup
+global-exclude *.new
+global-exclude *.code-workspace
+
+# Directory exclusions
 recursive-exclude venv *
 recursive-exclude env *
 recursive-exclude .venv *
