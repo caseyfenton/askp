@@ -21,7 +21,6 @@ from .utils import (format_size, sanitize_filename, load_api_key, get_model_info
                    normalize_model_name, estimate_cost, get_output_dir,
                    generate_combined_filename, generate_unique_id)
 from .file_utils import format_path, generate_cat_commands
-from .bgrun_integration import notify_query_completed, notify_multi_query_completed, update_askp_status_widget
 from .api import search_perplexity as sp
 
 def save_result_file(query: str, result: dict, index: int, output_dir: str, opts: Optional[Dict[str, Any]] = None) -> str:
@@ -409,14 +408,11 @@ def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
         print(f"Results saved to: {op_dir}")
         saved_path = saved_path or res.get("metadata", {}).get("saved_path")
     if saved_path and not opts.get("quiet", False):
-        from .bgrun_integration import notify_query_completed
-        notify_query_completed(res.get("query", ""), saved_path, res.get("model", ""),
-                               res.get("tokens", 0), res.get("metadata", {}).get("cost", 0.0))
-    from .tips import get_formatted_tip
-    if not opts.get("quiet", False) and not opts.get("multi", False):
-        tip = get_formatted_tip()
-        if tip:
-            print(tip)
+        from .tips import get_formatted_tip
+        if not opts.get("quiet", False) and not opts.get("multi", False):
+            tip = get_formatted_tip()
+            if tip:
+                print(tip)
 
 def output_multi_results(results: List[dict], opts: dict) -> None:
     """Combine and output results from multiple queries to a file."""
@@ -629,16 +625,8 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
                 if fmt == "markdown" and not is_deep:
                     suggest_cat_commands(results, out_dir)
     
-    # Update notification systems
+    # Also include the stats summary
     if not opts.get("quiet", False):
-        tot_toks = sum(r.get("tokens", 0) for r in results if r)
-        tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
-        # Only send combined file notifications if no_combine is not set
-        if not opts.get("no_combine", False):
-            notify_multi_query_completed(len(results), rel_path, tot_toks, tot_cost)
-            update_askp_status_widget(len(results), tot_cost, 0.0)
-        else:
-            # Just update the status widget without mentioning a combined file
-            update_askp_status_widget(len(results), tot_cost, 0.0)
+        print(f"\n{len(results)} queries | {tot_toks:,}T | ${tot_cost:.4f}")
     
     return results

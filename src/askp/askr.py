@@ -200,44 +200,6 @@ def create_widget_content(files: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-def update_bgrun_widget(files: List[Dict]) -> bool:
-    """
-    Update the BGRun widget with recent ASKP results.
-    
-    Args:
-        files: List of recent result files
-        
-    Returns:
-        True if widget was updated successfully, False otherwise
-    """
-    try:
-        widget_content = create_widget_content(files)
-        
-        # Try to find bgrun in PATH
-        bgrun_path = os.popen("which bgrun").read().strip()
-        
-        # If not found, check in common locations
-        if not bgrun_path:
-            potential_paths = [
-                os.path.expanduser("~/bin/bgrun"),
-                "/usr/local/bin/bgrun",
-                os.path.expanduser("~/CascadeProjects/bgrun/bgrun")
-            ]
-            
-            for path in potential_paths:
-                if os.path.exists(path) and os.access(path, os.X_OK):
-                    bgrun_path = path
-                    break
-        
-        if bgrun_path:
-            os.system(f"{bgrun_path} --widget askp-results --interval 3m \"echo '{widget_content}'\"")
-            return True
-    except Exception:
-        pass
-        
-    return False
-
-
 def display_results_table(files: List[Dict]):
     """Display a table of recent ASKP results."""
     console = Console()
@@ -314,9 +276,6 @@ def main():
     llm_parser.add_argument("-l", "--lines", type=int, default=200,
                           help="Maximum lines to include (default: 200)")
     
-    # Widget command
-    widget_parser = subparsers.add_parser("widget", help="Update BGRun widget with recent results")
-    
     args = parser.parse_args()
     
     # Default to list if no command specified
@@ -379,17 +338,6 @@ def main():
                 
         except ValueError:
             print("Invalid index format. Use a number (e.g., 1) or range (e.g., 1-3)")
-            
-    elif args.command == "widget":
-        success = update_bgrun_widget(recent_files)
-        if success:
-            print("ASKP results widget updated successfully")
-        else:
-            print("Failed to update ASKP results widget")
-    
-    else:
-        if not recent_files:
-            print("No recent ASKP results found")
 
 
 if __name__ == "__main__":

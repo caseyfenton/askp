@@ -25,9 +25,8 @@ from .file_utils import format_path, get_file_stats, generate_cat_commands
 from .utils import (load_api_key, format_size, sanitize_filename, get_model_info, 
                    normalize_model_name, estimate_cost, get_output_dir,
                    generate_combined_filename, generate_unique_id)
-from .bgrun_integration import notify_query_completed, notify_multi_query_completed, update_askp_status_widget
 console = Console()
-VERSION = "2.4.1"
+VERSION = "2.4.2"
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
