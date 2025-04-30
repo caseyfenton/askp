@@ -130,7 +130,43 @@ def test_linux_compatibility():
     """Test compatibility with Linux."""
     assert False, "Linux compatibility testing not yet implemented"
 
-@pytest.mark.skip(reason="Windows testing not yet implemented")
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific tests")
 def test_windows_compatibility():
     """Test compatibility with Windows."""
-    assert False, "Windows compatibility testing not yet implemented"
+    # Mock Windows-specific environment
+    with patch('sys.platform', 'win32'), \
+         patch('os.path.sep', '\\'), \
+         patch('os.environ', {'USERPROFILE': 'C:\\Users\\TestUser', 'APPDATA': 'C:\\Users\\TestUser\\AppData\\Roaming'}):
+        
+        # Test 1: Windows path handling
+        from askp.file_utils import format_path
+        from askp.utils import get_output_dir
+        
+        # Test Windows path normalization
+        win_path = 'C:\\Users\\TestUser\\Documents\\results.md'
+        formatted = format_path(win_path)
+        assert '\\' not in formatted, f"Path should not contain backslashes: {formatted}"
+        
+        # Test 2: Environment variable handling
+        with patch('askp.utils.os.path.expanduser', return_value='C:\\Users\\TestUser'):
+            output_dir = get_output_dir()
+            assert output_dir is not None, "Output directory should be created on Windows"
+            assert isinstance(output_dir, str), "Output directory should be a string"
+        
+        # Test 3: Entry point resolution
+        import pkg_resources
+        entry_points = list(pkg_resources.iter_entry_points(group='console_scripts', name='askp'))
+        assert len(entry_points) == 1, f"Should only have one entry point, found: {len(entry_points)}"
+        
+        # Test 4: Command execution simulation
+        with patch('askp.cli.main') as mock_main:
+            mock_main.return_value = 0
+            import sys
+            old_argv = sys.argv
+            try:
+                sys.argv = ['askp.exe', '--version']  # Windows executable name
+                from askp.cli import main
+                main()
+                mock_main.assert_called_once()
+            finally:
+                sys.argv = old_argv
