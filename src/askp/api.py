@@ -51,13 +51,13 @@ def load_openai_client(api_key: Optional[str] = None) -> openai.OpenAI:
     Raises:
         ValueError: If no API key is found
     """
-    from askp.utils import load_api_key
+    from askp.cli import load_api_key, OpenAI
     
     api_key = api_key or load_api_key()
     if not api_key:
         raise ValueError("No API key found. Set PERPLEXITY_API_KEY environment variable or create a .env file.")
     
-    return openai.OpenAI(
+    return OpenAI(
         api_key=api_key,
         base_url="https://api.perplexity.ai"
     )
@@ -191,4 +191,4 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     except Exception as e:
         error_msg = f"Error querying Perplexity API: {e}"
         rprint(f"{error_msg}")
-        return {"error": error_msg}
+        return None

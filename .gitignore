@@ -60,3 +60,5 @@ src/askp/*implementation*.md
 *.code-workspace
 .qodo
 .dev_temp/
+deprecated/
+.git-safe.git/

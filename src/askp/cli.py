@@ -17,15 +17,19 @@ from rich.console import Console
 from rich.markdown import Markdown
 from .executor import execute_query, handle_multi_query, output_result, output_multi_results
 from .api import search_perplexity
+import openai
+OpenAI = openai.OpenAI
 from .codecheck import handle_code_check
 from .formatters import format_json, format_markdown, format_text
 from .file_utils import format_path, get_file_stats, generate_cat_commands
-from .utils import (format_size, sanitize_filename, load_api_key, get_model_info, 
+from .utils import (load_api_key, format_size, sanitize_filename, get_model_info, 
                    normalize_model_name, estimate_cost, get_output_dir,
                    generate_combined_filename, generate_unique_id)
 from .bgrun_integration import notify_query_completed, notify_multi_query_completed, update_askp_status_widget
 console = Console()
 VERSION = "2.4.1"
+
+CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
 def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_set: bool, output_dir: str, custom: bool = False) -> Tuple[bool, dict]:
     """Set up deep research mode."""
@@ -69,7 +73,7 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
     
     return True, opts
 
-@click.command()
+@click.command(context_settings=CONTEXT_SETTINGS)
 @click.version_option(version=VERSION, prog_name="askp")
 @click.argument("query_text", nargs=-1, required=False)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")

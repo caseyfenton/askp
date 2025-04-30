@@ -16,13 +16,13 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List, Dict, Any, Tuple, Union
 from rich import print as rprint
 
-from .api import search_perplexity
 from .formatters import format_json, format_markdown, format_text
 from .utils import (format_size, sanitize_filename, load_api_key, get_model_info, 
                    normalize_model_name, estimate_cost, get_output_dir,
                    generate_combined_filename, generate_unique_id)
 from .file_utils import format_path, generate_cat_commands
 from .bgrun_integration import notify_query_completed, notify_multi_query_completed, update_askp_status_widget
+from .api import search_perplexity as sp
 
 def save_result_file(query: str, result: dict, index: int, output_dir: str, opts: Optional[Dict[str, Any]] = None) -> str:
     """
@@ -182,7 +182,7 @@ def append_to_combined(query: str, result: dict, index: int, output_dir: str,
 
 def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = None) -> Optional[dict]:
     """Execute a single query and save its result."""
-    res = search_perplexity(q, opts)
+    res = sp(q, opts)
     if not res:
         return None
     od = get_output_dir()
@@ -199,7 +199,8 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
     # Only create the combined file if no_combine is not set and combine is set
     if not opts.get("no_combine", False) and opts.get("combine") and lock and i == opts.get("total_queries", 0) - 1:
         cf = append_to_combined(q, res, i, od, lock, opts)
-        print(f"Combined results saved to {format_path(cf)}")
+        if not opts.get("quiet", False):
+            print(f"Combined results saved to {format_path(cf)}")
     return res
 
 def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
@@ -236,11 +237,13 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     
     # Only mention "parallel" for multiple queries
     if len(queries) > 1:
-        print(f"\nProcessing {len(queries)} queries in parallel...")
+        if not opts.get("quiet", False):
+            print(f"\nProcessing {len(queries)} queries in parallel...")
     else:
         # Only show basic processing message if not a sub-query of deep research
         if not opts.get("processing_subqueries", False):
-            print(f"\nProcessing query...")
+            if not opts.get("quiet", False):
+                print(f"\nProcessing query...")
         
     from .utils import get_model_info
     model = opts.get("model", "sonar-reasoning")
@@ -248,7 +251,8 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
     
     # Only show model info if not processing sub-queries for deep research
     if not opts.get("processing_subqueries", False):
-        print(f"Model: {model_info['display_name']} | Temp: {opts.get('temperature', 0.7)}")
+        if not opts.get("quiet", False):
+            print(f"Model: {model_info['display_name']} | Temp: {opts.get('temperature', 0.7)}")
     
     opts["suppress_model_display"] = True
     results: List[Optional[dict]] = []
@@ -342,14 +346,16 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
         output_multi_results(results, opts)
     else:
         # Just show the individual file info without creating a combined file
-        print("\nDONE!")
-        print(f"Queries processed: {len(results)}/{len(queries)}")
+        if not opts.get("quiet", False):
+            print("\nDONE!")
+            print(f"Queries processed: {len(results)}/{len(queries)}")
         
         # Show list of individual files
         suggest_cat_commands(results, od)
         
         # Also include the stats summary
-        print(f"\n{len(results)} queries | {total_tokens:,}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.1f}q/s)")
+        if not opts.get("quiet", False):
+            print(f"\n{len(results)} queries | {total_tokens:,}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.1f}q/s)")
     
     return results
 
@@ -365,16 +371,18 @@ def suggest_cat_commands(results: List[dict], output_dir: str) -> None:
             for cmd in commands:
                 print(f"  {cmd}")
 
-def output_result(res: dict, opts: dict) -> None:
-    """Output a single query result."""
+def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
+    """Format result and output to terminal or file."""
     if not res:
+        print("Error: No result to output")
         return
+    
     fmt = opts.get("format", "markdown")
     if fmt in ["markdown", "md"]:
         out = format_markdown(res)
     elif fmt == "json":
         out = format_json(res)
-    else:  # text
+    else:
         out = format_text(res)
     
     # For human-readable output (--human), directly display the content in the terminal
@@ -422,6 +430,10 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     
     opts = opts or {}
     fmt = opts.get("format", "markdown").lower()
+    if fmt in ["md", "markdown"]:
+        fmt = "markdown"
+    elif fmt in ["txt", "text"]:
+        fmt = "text"
     
     # Determine if this is a deep research result
     is_deep = opts.get("deep", False) or opts.get("custom_deep_research", False) or opts.get("deep_single_query", False)
@@ -624,9 +636,9 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         # Only send combined file notifications if no_combine is not set
         if not opts.get("no_combine", False):
             notify_multi_query_completed(len(results), rel_path, tot_toks, tot_cost)
-            update_askp_status_widget(len(results), tot_cost)
+            update_askp_status_widget(len(results), tot_cost, 0.0)
         else:
             # Just update the status widget without mentioning a combined file
-            update_askp_status_widget(len(results), tot_cost)
+            update_askp_status_widget(len(results), tot_cost, 0.0)
     
     return results

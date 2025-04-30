@@ -10,6 +10,7 @@ from openai import OpenAI
 from rich import print as rprint
 
 from .utils import load_api_key
+from .cli import search_perplexity
 
 
 def process_deep_research(results: List[Dict], options: Dict):
@@ -57,89 +58,39 @@ def process_deep_research(results: List[Dict], options: Dict):
     return results
 
 
-def generate_research_plan(query: str, model: str = "sonar-pro", temperature: float = 0.7, options: Optional[Dict[str, Any]] = None):
+def generate_research_plan(query: str, model: str = "sonar-pro", temperature: float = 0.7, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Generate a research plan for a given query.
-    
-    Args:
-        query: The query to generate a research plan for
-        model: The model to use for generating the plan
-        temperature: The temperature to use for generation
-        options: Additional options for customizing the plan generation
-        
-    Returns:
-        A dictionary containing the research plan with overview and sections
+    Generate a research plan for a given query by calling search_perplexity.
+    Returns dict with 'research_overview' and 'research_sections'.
     """
+    opts = {"model": model, "temperature": temperature}
+    if options:
+        opts.update(options)
+    res = search_perplexity(query, opts)
+    if not res or "content" not in res:
+        return {}
+    content = res["content"]
+    start = content.find("{")
+    end = content.rfind("}") + 1
+    json_str = content[start:end] if start >= 0 and end > start else content
     try:
-        # Load API key
-        api_key = load_api_key()
-        client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
-        
-        # Create the prompt for generating the research plan
-        prompt = _create_deep_research_prompt(query)
-        
-        # Make API call
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=1024
-        )
-        
-        # Parse the response
-        content = response.choices[0].message.content
-        try:
-            # Try to extract JSON from the response text
-            json_start = content.find('{')
-            json_end = content.rfind('}') + 1
-            
-            if json_start >= 0 and json_end > json_start:
-                json_str = content[json_start:json_end]
-                result = json.loads(json_str)
-                overview = result.get("overview", "")
-                research_queries = result.get("research_queries", [])
-            else:
-                # Fallback: try to parse lines that look like queries
-                lines = content.split('\n')
-                overview = query  # Default overview is the original query
-                research_queries = []
-                
-                # Look for a line that might be the overview
-                for i, line in enumerate(lines):
-                    if "overview" in line.lower() or "research plan" in line.lower():
-                        if i+1 < len(lines) and lines[i+1].strip():
-                            overview = lines[i+1].strip()
-                            break
-                
-                # Extract queries
-                for line in lines:
-                    line = line.strip()
-                    if line and (line.startswith('"') or line.startswith('-') or line.startswith('*')):
-                        # Clean up the line
-                        research_query = line.lstrip('-*"\' ').rstrip('",\' ')
-                        if research_query and len(research_query) > 10:  # Minimum length to filter out noise
-                            research_queries.append(research_query)
-            
-            # Validate and clean up research queries
-            valid_research_queries = []
-            for research_query in research_queries:
-                if isinstance(research_query, str) and research_query.strip():
-                    valid_research_queries.append(research_query.strip())
-            
-            if valid_research_queries:
-                print(f"Generated research plan with {len(valid_research_queries)} research queries.")
-                return {"research_overview": overview, "research_sections": valid_research_queries}
-            else:
-                print("Warning: Could not generate research queries. Using original query.")
-                return {"research_overview": query, "research_sections": [query]}
-            
-        except json.JSONDecodeError:
-            print("Warning: Could not parse deep research response as JSON. Using original query.")
-            return {"research_overview": query, "research_sections": [query]}
-            
-    except Exception as e:
-        print(f"Warning: Failed to generate deep research plan: {e}. Using original query.")
-        return {"research_overview": query, "research_sections": [query]}
+        plan = json.loads(json_str)
+    except json.JSONDecodeError:
+        return {}
+    return plan
+
+
+def create_research_queries(query: str, model: str = "sonar-pro", temperature: float = 0.7) -> List[str]:
+    """
+    Create list of research queries: original query + section descriptions.
+    """
+    plan = generate_research_plan(query, model, temperature)
+    queries = [query]
+    for sec in plan.get("research_sections", []):
+        desc = sec.get("description")
+        if desc:
+            queries.append(desc)
+    return queries
 
 
 def process_research_plan(plan: Dict, options: Dict):

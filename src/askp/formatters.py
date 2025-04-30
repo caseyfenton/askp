@@ -4,6 +4,7 @@ Formatting functions for ASKP.
 Contains format_json, format_markdown, and format_text.
 """
 import json
+import re
 from typing import Dict, Any
 
 def format_json(res: Dict[str, Any]) -> str:
