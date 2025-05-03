@@ -132,24 +132,44 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
                 max_tokens=max_tokens
             )
         except openai.AuthenticationError as e:
-            error_msg = f"Authentication error: {e}. Please check your API key."
-            rprint(f"{error_msg}")
+            error_str = str(e)
+            if "<html>" in error_str or "</html>" in error_str:
+                error_msg = "Authentication error: Invalid API key or unauthorized access to Perplexity API."
+            else:
+                error_msg = f"Authentication error: {e}. Please check your API key."
+            rprint(f"[bold red]{error_msg}[/bold red]")
             return {"error": error_msg}
         except openai.RateLimitError as e:
-            error_msg = f"Rate limit exceeded: {e}. Please try again later."
-            rprint(f"{error_msg}")
-            return {"error": error_msg}
-        except openai.APIError as e:
-            error_msg = f"API error: {e}."
-            rprint(f"{error_msg}")
+            error_str = str(e)
+            if "<html>" in error_str or "</html>" in error_str:
+                error_msg = "Rate limit exceeded: You have reached your API usage limits."
+            else:
+                error_msg = f"Rate limit exceeded: {e}. Please try again later."
+            rprint(f"[bold red]{error_msg}[/bold red]")
             return {"error": error_msg}
         except openai.APIConnectionError as e:
-            error_msg = f"API connection error: {e}. Please check your internet connection."
-            rprint(f"{error_msg}")
+            error_str = str(e)
+            if "<html>" in error_str or "</html>" in error_str:
+                error_msg = "API connection error: Unable to reach the Perplexity API server."
+            else:
+                error_msg = f"API connection error: {e}. Please check your internet connection."
+            rprint(f"[bold red]{error_msg}[/bold red]")
+            return {"error": error_msg}
+        except openai.APIError as e:
+            error_str = str(e)
+            if "<html>" in error_str or "</html>" in error_str:
+                error_msg = "API error: The Perplexity API server encountered an error processing your request."
+            else:
+                error_msg = f"API error: {e}."
+            rprint(f"[bold red]{error_msg}[/bold red]")
             return {"error": error_msg}
         except Exception as e:
-            error_msg = f"Error querying Perplexity API: {e}."
-            rprint(f"{error_msg}")
+            error_str = str(e)
+            if "<html>" in error_str or "</html>" in error_str:
+                error_msg = "Error querying Perplexity API: The server returned an unexpected response."
+            else:
+                error_msg = f"Error querying Perplexity API: {e}."
+            rprint(f"[bold red]{error_msg}[/bold red]")
             return {"error": error_msg}
         
         end_time = time.time()
@@ -214,9 +234,13 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
             return {"error": diagnostic, "raw_response": completion}
             
     except Exception as e:
-        error_msg = f"Error querying Perplexity API: {e}"
-        rprint(f"{error_msg}")
-        return None
+        error_str = str(e)
+        if "<html>" in error_str or "</html>" in error_str:
+            error_msg = "Error querying Perplexity API: The server returned an unexpected response."
+        else:
+            error_msg = f"Error querying Perplexity API: {e}."
+        rprint(f"[bold red]{error_msg}[/bold red]")
+        return {"error": error_msg}
 
 def get_account_status(api_key: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -258,22 +282,39 @@ def get_account_status(api_key: Optional[str] = None) -> Dict[str, Any]:
                     "used": "Unknown (API doesn't provide usage information)"
                 }
             }
-        except openai.AuthenticationError:
+        except openai.AuthenticationError as e:
+            error_str = str(e)
+            if "<html>" in error_str or "</html>" in error_str:
+                error_msg = "Invalid API key or unauthorized access to Perplexity API."
+            else:
+                error_msg = f"Authentication failed: {e}"
+                
             return {
-                "error": "Authentication failed. The API key is invalid or expired.",
+                "error": error_msg,
                 "status_code": 401,
                 "valid_key": False
             }
-        except openai.RateLimitError:
+        except openai.RateLimitError as e:
+            error_str = str(e)
+            if "<html>" in error_str or "</html>" in error_str:
+                error_msg = "Rate limit exceeded. This indicates your API key is valid but you've reached usage limits."
+            else:
+                error_msg = f"Rate limit exceeded: {e}"
+                
             return {
                 "status": "rate_limited",
                 "valid_key": True,
-                "error": "Rate limit exceeded. This indicates your API key is valid but you've reached usage limits.",
+                "error": error_msg,
                 "status_code": 429
             }
         except openai.APIError as e:
-            error_msg = str(e)
-            if "insufficient_quota" in error_msg.lower():
+            error_str = str(e)
+            if "<html>" in error_str or "</html>" in error_str:
+                error_msg = "API error. The Perplexity API server encountered an error."
+            else:
+                error_msg = str(e)
+                
+            if "insufficient_quota" in error_str.lower():
                 return {
                     "status": "no_credits",
                     "valid_key": True,
@@ -286,12 +327,26 @@ def get_account_status(api_key: Optional[str] = None) -> Dict[str, Any]:
                 "valid_key": None  # Unknown if valid
             }
         except Exception as e:
+            error_str = str(e)
+            if "<html>" in error_str or "</html>" in error_str:
+                error_msg = "Unexpected response from the Perplexity API server."
+            else:
+                error_msg = str(e)
+                
             return {
-                "error": f"Error checking account status: {str(e)}"
+                "error": f"Error checking account status: {error_msg}",
+                "valid_key": None
             }
     except Exception as e:
+        error_str = str(e)
+        if "<html>" in error_str or "</html>" in error_str:
+            error_msg = "Unexpected response while checking account status."
+        else:
+            error_msg = str(e)
+            
         return {
-            "error": f"Error checking account status: {str(e)}"
+            "error": f"Error checking account status: {error_msg}",
+            "valid_key": None
         }
 
 def display_account_status(api_key: Optional[str] = None, verbose: bool = False) -> None:
