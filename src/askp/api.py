@@ -11,8 +11,12 @@ import uuid
 from typing import Dict, Any, Optional, List, Union, Tuple, TypedDict, Literal
 
 import openai
+from openai import AuthenticationError, APIError, RateLimitError, BadRequestError, APIConnectionError
 from rich import print as rprint
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
+from rich.panel import Panel
+import requests
 
 ModelType = Literal[
     # Legacy Sonar Models
@@ -120,12 +124,33 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
             messages.append({"role": "system", "content": system_message})
         messages.append({"role": "user", "content": q})
         
-        completion = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+        except openai.AuthenticationError as e:
+            error_msg = f"Authentication error: {e}. Please check your API key."
+            rprint(f"{error_msg}")
+            return {"error": error_msg}
+        except openai.RateLimitError as e:
+            error_msg = f"Rate limit exceeded: {e}. Please try again later."
+            rprint(f"{error_msg}")
+            return {"error": error_msg}
+        except openai.APIError as e:
+            error_msg = f"API error: {e}."
+            rprint(f"{error_msg}")
+            return {"error": error_msg}
+        except openai.APIConnectionError as e:
+            error_msg = f"API connection error: {e}. Please check your internet connection."
+            rprint(f"{error_msg}")
+            return {"error": error_msg}
+        except Exception as e:
+            error_msg = f"Error querying Perplexity API: {e}."
+            rprint(f"{error_msg}")
+            return {"error": error_msg}
         
         end_time = time.time()
         response_time = end_time - start_time
@@ -192,3 +217,124 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
         error_msg = f"Error querying Perplexity API: {e}"
         rprint(f"{error_msg}")
         return None
+
+def get_account_status(api_key: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Get Perplexity account status including remaining credits.
+    
+    Args:
+        api_key: Optional API key to use instead of environment variable
+        
+    Returns:
+        Dictionary containing account status information
+    """
+    from askp.utils import load_api_key
+    
+    try:
+        api_key = api_key or load_api_key()
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://api.perplexity.ai"
+        )
+        
+        # Make a minimal models list request to check if the API key is valid
+        try:
+            # Try to make a small test request
+            response = client.chat.completions.create(
+                model="sonar",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=5
+            )
+            
+            # If we get here, the API key is valid
+            return {
+                "status": "active",
+                "valid_key": True,
+                "model_used": "sonar",
+                "message": "API key is valid and working correctly",
+                # Add estimated information since we can't get actual credits
+                "credits": {
+                    "remaining": "Unknown (API doesn't provide balance information)",
+                    "used": "Unknown (API doesn't provide usage information)"
+                }
+            }
+        except openai.AuthenticationError:
+            return {
+                "error": "Authentication failed. The API key is invalid or expired.",
+                "status_code": 401,
+                "valid_key": False
+            }
+        except openai.RateLimitError:
+            return {
+                "status": "rate_limited",
+                "valid_key": True,
+                "error": "Rate limit exceeded. This indicates your API key is valid but you've reached usage limits.",
+                "status_code": 429
+            }
+        except openai.APIError as e:
+            error_msg = str(e)
+            if "insufficient_quota" in error_msg.lower():
+                return {
+                    "status": "no_credits",
+                    "valid_key": True,
+                    "error": "Insufficient quota. Your API key is valid but you have no remaining credits.",
+                    "status_code": 429
+                }
+            return {
+                "error": f"API error: {error_msg}",
+                "status_code": 500,
+                "valid_key": None  # Unknown if valid
+            }
+        except Exception as e:
+            return {
+                "error": f"Error checking account status: {str(e)}"
+            }
+    except Exception as e:
+        return {
+            "error": f"Error checking account status: {str(e)}"
+        }
+
+def display_account_status(api_key: Optional[str] = None, verbose: bool = False) -> None:
+    """
+    Display Perplexity account status including remaining credits in a nice format.
+    
+    Args:
+        api_key: Optional API key to use instead of environment variable
+        verbose: Whether to show more detailed information
+    """
+    status = get_account_status(api_key)
+    
+    if "error" in status:
+        rprint(Panel(
+            f"[bold red]{status['error']}[/bold red]",
+            title="Error Checking Account Status",
+            border_style="red"
+        ))
+        return
+    
+    # Create a table for the information
+    table = Table(title="Perplexity API Key Status")
+    
+    # Add columns
+    table.add_column("Item", style="cyan")
+    table.add_column("Value", style="green")
+    
+    # Add API key status
+    table.add_row("API Key", "✅ Valid" if status.get("valid_key", False) else "❌ Invalid")
+    table.add_row("Status", status.get("status", "Unknown"))
+    
+    # Add a note about the API limitation
+    table.add_row(
+        "Credits Info", 
+        "⚠️ Not available via API (must check Perplexity dashboard)"
+    )
+    
+    if verbose:
+        table.add_row(
+            "Note", 
+            "Perplexity API does not provide endpoints for checking credit balance.\n"
+            "Visit https://www.perplexity.ai/account/api/keys for account details."
+        )
+    
+    # Print the table
+    rprint(table)

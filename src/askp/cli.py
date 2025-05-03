@@ -19,14 +19,14 @@ from .executor import execute_query, handle_multi_query, output_result, output_m
 from .api import search_perplexity
 import openai
 OpenAI = openai.OpenAI
-from .codecheck import handle_code_check
+# from .codecheck import handle_code_check  # Module doesn't exist, commenting out
 from .formatters import format_json, format_markdown, format_text
 from .file_utils import format_path, get_file_stats, generate_cat_commands
 from .utils import (load_api_key, format_size, sanitize_filename, get_model_info, 
                    normalize_model_name, estimate_cost, get_output_dir,
                    generate_combined_filename, generate_unique_id)
 console = Console()
-VERSION = "2.4.2"
+VERSION = "2.4.4"
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
@@ -86,43 +86,63 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 )
 @click.option("--output", "-o", type=click.Path(), help="Output file path")
 @click.option("--num-results", "-n", type=int, default=1, help="Number of results per query")
-@click.option("--model", "-m", type=str, default="sonar-reasoning", help="Model to use (sonar, sonar-reasoning, sonar-reasoning-pro)")
-@click.option("--basic", "-b", is_flag=True, help="Use basic Sonar model (fastest, cheapest)")
-@click.option("--reasoning-pro", "-r", is_flag=True, help="Use enhanced reasoning model (sonar-reasoning-pro)")
-@click.option("--code", "-c", is_flag=True, help="Use code-optimized model (llama-3.1-sonar-small-128k-online)")
-@click.option("--sonar", "-S", is_flag=True, help="Use Sonar model (same as -b)")
-@click.option("--sonar-pro", "-SP", is_flag=True, help="Use Sonar Pro model (EXPENSIVE)")
+@click.option("--model", "-m", type=str, default="sonar-reasoning", help="Model to use (see --model-help for full details)")
+@click.option("--basic", "-b", is_flag=True, help="Use basic Sonar model (fastest, cheapest, good for simple factual queries)")
+@click.option("--reasoning-pro", "-r", is_flag=True, help="Use enhanced reasoning model (better for complex analysis, deeper context)")
+@click.option("--code", "-c", is_flag=True, help="Use code-optimized model (best for programming questions, technical analysis)")
+@click.option("--sonar", "-S", is_flag=True, help="Use basic Sonar model (same as -b)")
+@click.option("--sonar-pro", "-SP", is_flag=True, help="Use Sonar Pro model (highest quality but 5-10x more expensive, best for critical research)")
 @click.option("--search-depth", "-d", type=click.Choice(["low", "medium", "high"]), default="medium",
-              help="Search depth: low (minimal), medium (standard), high (extensive)")
-@click.option("--temperature", "-t", type=float, default=0.7, help="Temperature")
-@click.option("--token_max", type=int, help="Maximum tokens to generate")
-@click.option("--model-help", is_flag=True, help="Show detailed model information and costs")
-@click.option("--pro-reasoning", "-pr", is_flag=True, help="Use pro reasoning mode (deprecated, use -r instead)")
-@click.option("--reasoning", "-R", is_flag=True, help="Legacy reasoning flag (deprecated, use -r instead)")
-@click.option("--single", "-s", is_flag=True, help="Force single query mode")
-@click.option("--max-parallel", type=int, default=5, help="Maximum number of parallel queries")
+              help="Search depth: low (minimal info, fastest), medium (balanced), high (comprehensive, slower)")
+@click.option("--temperature", "-t", type=float, default=0.7, help="Temperature (0.1-1.0): lower for focused/deterministic, higher for creative responses")
+@click.option("--token_max", type=int, help="Maximum tokens to generate (controls response length)")
+@click.option("--model-help", is_flag=True, help="Show detailed model information, capabilities, and cost comparison")
+@click.option("--pro-reasoning", "-pr", is_flag=True, help="[DEPRECATED] Use --reasoning-pro (-r) instead")
+@click.option("--reasoning", "-R", is_flag=True, help="[DEPRECATED] Use --reasoning-pro (-r) instead")
+@click.option("--single", "-s", is_flag=True, help="Force single query mode even with multiple queries (prevents parallel processing)")
+@click.option("--max-parallel", type=int, default=5, help="Maximum number of parallel queries (higher values = faster but more API load)")
 @click.option("--file", "-i", type=click.Path(exists=True), help="Read queries from file, one per line")
-@click.option("--no-combine", "-nc", is_flag=True, help="Don't combine results into a single file (override default combining)")
-@click.option("--combine", "-c", "-C", is_flag=True, help="Combine multi-query results (default, maintained for compatibility)")
-@click.option("--view", is_flag=True, help="View query results directly in terminal (using default line limit)")
-@click.option("--view-lines", type=int, default=None, help="View query results with specified max lines")
-@click.option("--expand", "-e", type=int, help="Expand queries to specified total number by generating related queries")
-@click.option("--deep", "-D", is_flag=True, help="Perform deep research by generating a comprehensive research plan")
-@click.option("--deep-custom", is_flag=True, help="Use custom deep research implementation (multiple parallel queries)")
-@click.option("--cleanup-component-files", is_flag=True, help="Move component files to trash after deep research is complete")
-@click.option("--quick", "-Q", is_flag=True, help="Combine all queries into a single request with short answers")
-@click.option("--code-check", "-cc", type=click.Path(exists=True), help="File to check for code quality/issues")
-@click.option("--debug", is_flag=True, help="Capture raw API responses for debugging")
+@click.option("--no-combine", "-nc", is_flag=True, help="Save each query result to a separate file (overrides default combining)")
+@click.option("--combine", "-c", "-C", is_flag=True, help="Combine multi-query results into one file (this is the default)")
+@click.option("--view", is_flag=True, help="Display query results directly in terminal (in addition to saving)")
+@click.option("--view-lines", type=int, default=None, help="Set maximum number of lines to display in terminal")
+@click.option("--expand", "-e", type=int, help="Generate additional related queries to reach this total (e.g. -e 5 turns 1 query into 5)")
+@click.option("--deep", "-D", is_flag=True, help="Use Perplexity's built-in deep research mode (faster, more efficient)")
+@click.option("--deep-custom", is_flag=True, help="Use custom multi-query deep research (more transparent, good for specialized research)")
+@click.option("--cleanup-component-files", is_flag=True, help="Remove intermediate files after deep research completes")
+@click.option("--quick", "-Q", is_flag=True, help="Get concise answers for multiple questions in a single API call (fastest)")
+@click.option("--code-check", "-cc", type=click.Path(exists=True), help="Check code file for bugs, improvements, and security issues")
+@click.option("--debug", is_flag=True, help="Save raw API responses for debugging and analysis")
+@click.option("--account-status", "--credits", is_flag=True, help="Check account status and remaining API credits")
+@click.option("--account-details", is_flag=True, help="Show detailed account information including rate limits")
 def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro, 
         search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file, 
-        no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, quick, code_check, debug):
-    """ASKP CLI - Search Perplexity AI from the command line"""
+        no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, quick, code_check, debug,
+        account_status, account_details):
+    """ASKP - Advanced knowledge search using Perplexity AI
+
+    Run natural language searches directly from your terminal. Use multiple queries,
+    deep research modes, and specialized models for different types of questions.
+    
+    Simple Example: askp "What is quantum computing?"
+    
+    Multi-query Example: askp "Python packaging" "Virtual environments" "Poetry vs pip"
+    
+    Deep Research: askp -D "History and impact of renewable energy"
+    
+    For detailed model information and costs, use: askp --model-help
+    """
     # Show model help if requested
     ctx = click.get_current_context()
     if model_help:
         display_model_help()
         ctx.exit()
         
+    # Check account status if requested (should happen before query processing)
+    if account_status or account_details:
+        handle_account_status_check(verbose=account_details)
+        ctx.exit()
+    
     # Select model based on flags (priority order)
     if basic or sonar:
         model = "sonar"
@@ -218,6 +238,15 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
             print("Error: Failed to get response from Perplexity API")
             sys.exit(1)
         output_result(r, opts)
+
+    # Check account status
+    if account_status or account_details:
+        handle_account_status_check(verbose=verbose)
+
+def handle_account_status_check(verbose=False):
+    """Handle the account status check command."""
+    from .api import display_account_status
+    display_account_status(verbose=verbose)
 
 def display_model_help():
     """Display model help information."""
