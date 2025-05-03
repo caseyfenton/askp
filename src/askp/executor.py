@@ -191,7 +191,14 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
     if opts.get("suppress_model_display", False):
         t = q[:40] + "..." if len(q) > 40 else q
         bytes_count = len(res["results"][0].get("content", "")) if res.get("results") else len(res.get("content", ""))
-        print(f'{i+1}: "{t}"  {format_size(bytes_count)} | {res.get("tokens", 0)}T | ${res["metadata"]["cost"]:.4f}')
+        
+        # Check if we have a successful response with cost information
+        if "error" in res:
+            # Display error message without cost information
+            print(f'{i+1}: "{t}"  Error')
+        else:
+            # Display normal success message with cost
+            print(f'{i+1}: "{t}"  {format_size(bytes_count)} | {res.get("tokens", 0)}T | ${res["metadata"].get("cost", 0):.4f}')
     else:
         print(f"Saved: {rel_path}")
     
@@ -431,6 +438,11 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     elif fmt in ["txt", "text"]:
         fmt = "text"
     
+    # Initialize token and cost counters right away so they're available in all code paths
+    tot_toks = sum(r.get("tokens", 0) for r in results if r)
+    tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
+    model = opts.get("model", "sonar-pro")
+    
     # Determine if this is a deep research result
     is_deep = opts.get("deep", False) or opts.get("custom_deep_research", False) or opts.get("deep_single_query", False)
     is_custom_deep = opts.get("custom_deep_research", False)
@@ -511,10 +523,6 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
             out = json.dumps(combined, indent=2)
     else:
         # Markdown/text output
-        tot_toks = sum(r.get("tokens", 0) for r in results if r)
-        tot_cost = sum(r.get("metadata", {}).get("cost", 0) for r in results if r)
-        model = opts.get("model", "sonar-pro")
-        
         if is_deep:
             if is_custom_deep:
                 # Custom deep research with intro, sections, and conclusion
