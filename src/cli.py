@@ -10,7 +10,7 @@ source "${ASKP_HOME}/env/bin/activate"
 
 # Execute command
 if [ "$1" = "--version" ]; then
-    echo "askp version 2.4.2"
+    echo "askp version 2.4.4"
     exit 0
 else
     # Try to run askp.cli, but fall back to perplexity_cli if not available
