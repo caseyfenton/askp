@@ -7,6 +7,8 @@ import os
 import re
 import json
 import uuid
+import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Union
@@ -71,105 +73,284 @@ PERPLEXITY_API_KEY=pplx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     exit(1)
 
 def get_model_info(model: str) -> Dict:
-    """Get information about a specific model."""
-    models = {
-        "sonar-small-online": {
-            "name": "Sonar Small Online",
-            "description": "Fast, efficient model for simple queries",
-            "context_window": 4000,
-            "cost_per_query": 0.0001,
-            "online": True
-        },
-        "sonar-medium-online": {
-            "name": "Sonar Medium Online",
-            "description": "Balanced model for general-purpose queries",
-            "context_window": 8000,
-            "cost_per_query": 0.0002,
-            "online": True
-        },
-        "sonar-large-online": {
-            "name": "Sonar Large Online",
-            "description": "Powerful model for complex queries",
-            "context_window": 12000,
-            "cost_per_query": 0.0004,
-            "online": True
-        },
-        "mixtral-8x7b-instruct": {
-            "name": "Mixtral 8x7B Instruct",
-            "description": "Powerful open-source model",
-            "context_window": 32768,
-            "cost_per_query": 0.0006,
-            "online": False
-        },
-        "llama-3-70b-instruct": {
-            "name": "Llama-3-70B-Instruct",
-            "description": "Meta's latest large language model",
-            "context_window": 8192,
-            "cost_per_query": 0.0008,
-            "online": False
-        },
-        "claude-3-opus-20240229": {
-            "name": "Claude 3 Opus",
-            "description": "Anthropic's most powerful model",
-            "context_window": 200000,
-            "cost_per_query": 0.0015,
-            "online": False
-        },
-        "claude-3-sonnet-20240229": {
-            "name": "Claude 3 Sonnet",
-            "description": "Anthropic's balanced model",
-            "context_window": 180000,
-            "cost_per_query": 0.0008,
-            "online": False
-        },
-        "claude-3-haiku-20240307": {
-            "name": "Claude 3 Haiku",
-            "description": "Anthropic's fastest model",
-            "context_window": 160000,
-            "cost_per_query": 0.0003,
-            "online": False
-        },
-        "gpt-4o": {
-            "name": "GPT-4o",
-            "description": "OpenAI's most capable model",
-            "context_window": 128000,
-            "cost_per_query": 0.0015,
-            "online": False
-        },
-        "gpt-4-turbo": {
-            "name": "GPT-4 Turbo",
-            "description": "OpenAI's powerful model",
-            "context_window": 128000,
-            "cost_per_query": 0.0010,
-            "online": False
-        },
-        "gpt-3.5-turbo": {
-            "name": "GPT-3.5 Turbo",
-            "description": "OpenAI's efficient model",
-            "context_window": 16385,
-            "cost_per_query": 0.0002,
-            "online": False
-        },
-        "command-r": {
-            "name": "Command R",
-            "description": "Cohere's powerful model",
-            "context_window": 128000,
-            "cost_per_query": 0.0010,
-            "online": False
-        }
+    """Get information about a model including cost and display name."""
+    model = normalize_model_name(model)
+    
+    model_info = {
+        "model": model,
+        "cost_per_million": 1.0,  # Default cost
+        "display_name": model
     }
     
-    return models.get(model, {
-        "name": model,
-        "description": "Unknown model",
-        "context_window": 4000,
-        "cost_per_query": 0.0005,
-        "online": False
-    })
+    if model == "sonar":
+        model_info["display_name"] = "sonar (basic)"
+        model_info["cost_per_million"] = 1.0
+    elif model == "sonar-pro":
+        model_info["display_name"] = "sonar-pro (EXPENSIVE)"
+        model_info["cost_per_million"] = 15.0
+    elif model == "sonar-reasoning":
+        model_info["display_name"] = "sonar-reasoning (default)"
+        model_info["cost_per_million"] = 5.0
+    elif model == "sonar-reasoning-pro":
+        model_info["display_name"] = "sonar-reasoning-pro (enhanced)"
+        model_info["cost_per_million"] = 8.0
+    elif model == "sonar-deep-research":
+        model_info["display_name"] = "sonar-deep-research"
+        model_info["cost_per_million"] = 8.0
+    elif "llama" in model:
+        model_info["display_name"] = "llama-3.1-sonar (code-optimized)"
+        model_info["cost_per_million"] = 5.0
+    
+    return model_info
 
-def get_results_dir() -> Path:
-    """Get the directory for storing results."""
-    home = Path.home()
-    results_dir = home / "perplexity_results"
-    results_dir.mkdir(exist_ok=True)
-    return results_dir
+def normalize_model_name(model: str) -> str:
+    """Normalize model name to match Perplexity's expected format."""
+    if not model:
+        return "sonar-pro"
+    model = model.lower().replace("-", "").replace(" ", "")
+    
+    # Map aliases to full model names
+    mappings = {
+        # Legacy Sonar models
+        "sonarpro": "sonar-pro", 
+        "sonar": "sonar", 
+        "sonarreasoning": "sonar-reasoning",
+        "sonarreasoningpro": "sonar-reasoning-pro",
+        "sonardeepresearch": "sonar-deep-research",
+        "prosonar": "sonar-pro", 
+        "pro": "sonar-pro",
+        # Handle legacy name (deprecated)
+        "sonarproreasoning": "sonar-reasoning-pro",
+        
+        # Llama 3.1 models
+        "llama31small": "llama-3.1-sonar-small-128k-online",
+        "llama31large": "llama-3.1-sonar-large-128k-online",
+        "llama31smallchat": "llama-3.1-sonar-small-128k-chat",
+        "llama31largechat": "llama-3.1-sonar-large-128k-chat",
+        "llama3170b": "llama-3.1-70b-instruct",
+        "llama318b": "llama-3.1-8b-instruct",
+        
+        # Mixtral and PPLX models
+        "mixtral": "mixtral-8x7b-instruct",
+        "pplx7b": "pplx-7b-online",
+        "pplx70b": "pplx-70b-online",
+        "pplx7bchat": "pplx-7b-chat",
+        "pplx70bchat": "pplx-70b-chat",
+        
+        # Offline model
+        "r1": "r1-1776"
+    }
+    
+    return mappings.get(model, model)
+
+def detect_model(response_data: Union[dict, str], filename: str = None) -> str:
+    """Detect which model was used based on response data or filename."""
+    # If we have a filename with model info, use that
+    if filename:
+        model_indicators = {
+            "sonar-pro": ["sonarpro", "sonar_pro"],
+            "sonar-reasoning": ["sonarreasoning", "sonar_reasoning"],
+            "sonar-reasoning-pro": ["sonarreasoningpro", "sonar_reasoning_pro"],
+            "sonar-deep-research": ["sonardeepresearch", "sonar_deep_research"],
+            "llama-3.1-sonar-small-128k-online": ["llama31small", "llama_3_1_small"],
+            "llama-3.1-sonar-large-128k-online": ["llama31large", "llama_3_1_large"],
+            "mixtral-8x7b-instruct": ["mixtral", "mixtral8x7b"],
+        }
+        
+        filename_lower = filename.lower()
+        for model, indicators in model_indicators.items():
+            for indicator in indicators:
+                if indicator in filename_lower:
+                    return model
+    
+    # If we have JSON response data, try to extract model info
+    if isinstance(response_data, dict):
+        # Check for model field in various locations
+        if "model" in response_data:
+            return response_data["model"]
+        if "metadata" in response_data and isinstance(response_data["metadata"], dict):
+            if "model" in response_data["metadata"]:
+                return response_data["metadata"]["model"]
+    
+    # Default to sonar-reasoning if we can't detect
+    return "sonar-reasoning"
+
+def estimate_cost(response_data: Union[dict, str], model: str = None) -> float:
+    """Estimate the cost of a query based on response data and model."""
+    # Default cost if we can't determine
+    default_cost = 0.005  # $0.005 per query
+    
+    # If model is not provided, try to detect it
+    if not model and isinstance(response_data, dict):
+        model = detect_model(response_data)
+    
+    # Get model info
+    model_info = get_model_info(model) if model else {"cost_per_million": 5.0}
+    
+    # Calculate cost based on token count if available
+    if isinstance(response_data, dict):
+        # Check for token count in metadata
+        token_count = 0
+        if "metadata" in response_data and isinstance(response_data["metadata"], dict):
+            metadata = response_data["metadata"]
+            if "usage" in metadata and isinstance(metadata["usage"], dict):
+                usage = metadata["usage"]
+                if "total_tokens" in usage:
+                    token_count = usage["total_tokens"]
+                elif "completion_tokens" in usage and "prompt_tokens" in usage:
+                    token_count = usage["completion_tokens"] + usage["prompt_tokens"]
+        
+        if token_count > 0:
+            # Calculate cost based on tokens and model rate
+            return (token_count / 1000000) * model_info["cost_per_million"]
+    
+    # Return default cost if we couldn't calculate
+    return default_cost
+
+def get_results_dir(output_dir: str = None) -> Path:
+    """
+    Determine the best directory for storing results.
+    
+    Args:
+        output_dir: Optional user-specified output directory
+        
+    Returns:
+        Path object for the results directory
+    """
+    # If user specified a directory, use that
+    if output_dir:
+        d = Path(output_dir)
+        d.mkdir(exist_ok=True, parents=True)
+        return d
+        
+    # Otherwise, try several locations in order of preference
+    d = None
+    
+    # Try to find a suitable directory
+    if not d:
+        # 1. Try ~/.perplexity directory
+        try:
+            home_dir = Path.home()
+            d = home_dir / ".perplexity"
+            d.mkdir(exist_ok=True)
+            if os.access(d, os.W_OK):
+                return d
+        except (PermissionError, OSError):
+            pass
+            
+        # 2. Try script directory
+        try:
+            script_path = Path(sys.argv[0]).resolve()
+            if script_path.exists() and script_path.is_file():
+                script_dir = script_path.parent
+                if os.access(script_dir, os.W_OK):
+                    d = script_dir / "perplexity_results"
+                    d.mkdir(exist_ok=True)
+                    return d
+        except (IndexError, PermissionError):
+            pass
+        
+        # 3. Try current working directory
+        try:
+            cwd = Path.cwd()
+            d = cwd / "perplexity_results"
+            # Test if we can write to this directory
+            d.mkdir(exist_ok=True)
+            test_file = d / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+            return d
+        except (PermissionError, OSError):
+            pass
+            
+        # 4. Try user's home directory
+        try:
+            home_dir = Path.home()
+            d = home_dir / "perplexity_results" 
+            d.mkdir(exist_ok=True)
+            return d
+        except (PermissionError, OSError):
+            pass
+            
+        # 5. Last resort: use system temp directory
+        temp_dir = Path(tempfile.gettempdir())
+        d = temp_dir / "perplexity_results"
+        
+    # Ensure the directory exists
+    d.mkdir(exist_ok=True)
+    return d
+
+def generate_combined_filename(queries: list, opts: dict = None) -> str:
+    """
+    Generate a descriptive filename for combined results.
+    
+    Args:
+        queries: List of query strings
+        opts: Options dictionary containing format and other preferences
+        
+    Returns:
+        Filename for combined results with appropriate extension
+    """
+    if opts is None:
+        opts = {}
+        
+    # Determine file extension based on format
+    format_type = opts.get("format", "markdown").lower()
+    if format_type == "json":
+        file_ext = ".json"
+    elif format_type == "text":
+        file_ext = ".txt"
+    else:  # Default to markdown
+        file_ext = ".md"
+    
+    # If output is specified, respect it but ensure correct extension
+    if opts.get("output"):
+        base = os.path.basename(opts["output"])
+        # Replace extension if it doesn't match the requested format
+        if not base.endswith(file_ext):
+            base_name = os.path.splitext(base)[0]
+            return f"{base_name}{file_ext}"
+        return base
+    
+    # Use timestamp for the filename for uniqueness
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    
+    # Generate descriptive names based on queries
+    if len(queries) == 1:
+        # For a single query, use a portion of the query text
+        clean = re.sub(r'[^\w\s-]', '', queries[0]).strip().replace(" ", "_")[:40]
+        return f"{clean}_{timestamp}{file_ext}"
+        
+    if len(queries) > 1:
+        # For multiple queries, include the count and first query keywords
+        count = len(queries)
+        sample_query = queries[0]
+        words = []
+        parts = sample_query.split()[:3]  # Take first 3 words of first query
+        for w in parts:
+            w = re.sub(r'[^\w\s-]', '', w)
+            if w not in ['what','is','the','a','an','in','of','to','for','and','or','capital'] and w not in words:
+                words.append(w)
+                
+        if words:
+            query_hint = "_".join(words)[:20]
+            return f"queries_{count}_{query_hint}_{timestamp}{file_ext}"
+            
+    # Fallback with clear count indication
+    return f"queries_{len(queries)}_{timestamp}{file_ext}"
+
+def generate_unique_id(id_type="file") -> str:
+    """Generate a unique ID for a file or session."""
+    return str(uuid.uuid4()) if id_type=="session" else datetime.now().strftime("%Y%m%d_%H%M%S")
+
+def format_path(path: str) -> str:
+    """Format a path to be relative to the current directory if possible."""
+    try:
+        cwd = os.getcwd()
+        return path[len(cwd)+1:] if path.startswith(cwd) else path
+    except:
+        return path
+
+def get_output_dir() -> Path:
+    """Get the directory for storing output files."""
+    return get_results_dir()
