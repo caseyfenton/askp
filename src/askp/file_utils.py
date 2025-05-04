@@ -30,10 +30,12 @@ def format_path(filepath: str) -> str:
     # Only use tilde if we couldn't make a clean relative path
     # This prevents confusion when paths are in other user directories
     home_dir = os.path.expanduser("~")
-    if filepath.startswith(home_dir):
+    if isinstance(filepath, str) and filepath.startswith(home_dir):
         return filepath.replace(home_dir, "~")
+    elif isinstance(filepath, Path) and str(filepath).startswith(home_dir):
+        return str(filepath).replace(home_dir, "~")
     
-    return filepath
+    return str(filepath) if isinstance(filepath, Path) else filepath
 
 def get_file_stats(filepath: str) -> Tuple[int, int]:
     """Get file statistics (size in bytes and line count)."""
