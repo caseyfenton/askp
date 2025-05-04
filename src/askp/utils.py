@@ -69,3 +69,107 @@ PERPLEXITY_API_KEY=pplx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 [bold]Note:[/bold] Make sure your API key is valid and not expired.
 """, title="API Key Required", border_style="red"))
     exit(1)
+
+def get_model_info(model: str) -> Dict:
+    """Get information about a specific model."""
+    models = {
+        "sonar-small-online": {
+            "name": "Sonar Small Online",
+            "description": "Fast, efficient model for simple queries",
+            "context_window": 4000,
+            "cost_per_query": 0.0001,
+            "online": True
+        },
+        "sonar-medium-online": {
+            "name": "Sonar Medium Online",
+            "description": "Balanced model for general-purpose queries",
+            "context_window": 8000,
+            "cost_per_query": 0.0002,
+            "online": True
+        },
+        "sonar-large-online": {
+            "name": "Sonar Large Online",
+            "description": "Powerful model for complex queries",
+            "context_window": 12000,
+            "cost_per_query": 0.0004,
+            "online": True
+        },
+        "mixtral-8x7b-instruct": {
+            "name": "Mixtral 8x7B Instruct",
+            "description": "Powerful open-source model",
+            "context_window": 32768,
+            "cost_per_query": 0.0006,
+            "online": False
+        },
+        "llama-3-70b-instruct": {
+            "name": "Llama-3-70B-Instruct",
+            "description": "Meta's latest large language model",
+            "context_window": 8192,
+            "cost_per_query": 0.0008,
+            "online": False
+        },
+        "claude-3-opus-20240229": {
+            "name": "Claude 3 Opus",
+            "description": "Anthropic's most powerful model",
+            "context_window": 200000,
+            "cost_per_query": 0.0015,
+            "online": False
+        },
+        "claude-3-sonnet-20240229": {
+            "name": "Claude 3 Sonnet",
+            "description": "Anthropic's balanced model",
+            "context_window": 180000,
+            "cost_per_query": 0.0008,
+            "online": False
+        },
+        "claude-3-haiku-20240307": {
+            "name": "Claude 3 Haiku",
+            "description": "Anthropic's fastest model",
+            "context_window": 160000,
+            "cost_per_query": 0.0003,
+            "online": False
+        },
+        "gpt-4o": {
+            "name": "GPT-4o",
+            "description": "OpenAI's most capable model",
+            "context_window": 128000,
+            "cost_per_query": 0.0015,
+            "online": False
+        },
+        "gpt-4-turbo": {
+            "name": "GPT-4 Turbo",
+            "description": "OpenAI's powerful model",
+            "context_window": 128000,
+            "cost_per_query": 0.0010,
+            "online": False
+        },
+        "gpt-3.5-turbo": {
+            "name": "GPT-3.5 Turbo",
+            "description": "OpenAI's efficient model",
+            "context_window": 16385,
+            "cost_per_query": 0.0002,
+            "online": False
+        },
+        "command-r": {
+            "name": "Command R",
+            "description": "Cohere's powerful model",
+            "context_window": 128000,
+            "cost_per_query": 0.0010,
+            "online": False
+        }
+    }
+    
+    return models.get(model, {
+        "name": model,
+        "description": "Unknown model",
+        "context_window": 4000,
+        "cost_per_query": 0.0005,
+        "online": False
+    })
+
+def get_results_dir() -> Path:
+    """Get the directory for storing results."""
+    home = Path.home()
+    results_dir = home / "perplexity_results"
+    results_dir.mkdir(exist_ok=True)
+    return results_dir
