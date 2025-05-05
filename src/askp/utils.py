@@ -103,10 +103,18 @@ def get_model_info(model: str) -> Dict:
     
     return model_info
 
-def normalize_model_name(model: str) -> str:
+def normalize_model_name(model: Union[str, dict]) -> str:
     """Normalize model name to match Perplexity's expected format."""
     if not model:
         return "sonar-pro"
+        
+    # Handle case where model is a dictionary (happens with newer OpenAI client)
+    if isinstance(model, dict) and "model" in model:
+        model = model["model"]
+    elif isinstance(model, dict):
+        # If it's a dict but doesn't have a 'model' key, use default
+        return "sonar-pro"
+        
     model = model.lower().replace("-", "").replace(" ", "")
     
     # Map aliases to full model names
