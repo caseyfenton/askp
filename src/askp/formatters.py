@@ -21,16 +21,33 @@ def format_markdown(res: Dict[str, Any]) -> str:
                   f"**Tokens Used:** {meta.get('tokens', 0)}",
                   f"**Estimated Cost:** ${meta.get('cost', 0):.6f}\n"]
     if res.get("error"):
-        parts.append(f"**Error:** {res['error']}")
+        # Safely handle error with string conversion
+        error_str = str(res.get("error", ""))
+        parts.append(f"**Error:** {error_str}")
     elif "content" in res:
-        parts.append(res["content"])
-    elif res.get("results") and "content" in res["results"][0]:
-        parts.append(res["results"][0]["content"])
+        # Ensure the content is a string
+        content = str(res["content"]) if res["content"] is not None else ""
+        parts.append(content)
+    elif res.get("results") and isinstance(res.get("results"), list) and res["results"] and "content" in res["results"][0]:
+        # Also ensure content is a string here
+        content = str(res["results"][0]["content"]) if res["results"][0]["content"] is not None else ""
+        parts.append(content)
     else:
         parts.append("No content available")
-    if res.get("citations") and meta.get("verbose", False):
-        parts.append("\n**Citations:**")
-        parts += [f"- {c}" for c in res["citations"]]
+    
+    # Safely handle citations which might be in different formats
+    if res.get("citations"):
+        if meta.get("verbose", False):
+            parts.append("\n**Citations:**")
+        # Handle citations as either strings or dicts
+        if res.get("citations") and isinstance(res.get("citations"), list):
+            for c in res.get("citations", []):
+                if isinstance(c, str):
+                    parts.append(f"- {c}")
+                elif isinstance(c, dict) and "url" in c:
+                    parts.append(f"- {c['url']}")
+                else:
+                    parts.append(f"- {str(c)}")
     if meta.get("verbose", False):
         parts.append("\n## Metadata")
         for k, v in meta.items():
@@ -43,15 +60,21 @@ def format_text(res: Dict[str, Any]) -> str:
     meta = res.get("metadata", {})
     if meta.get("verbose", False):
         parts += [f"Query: {res.get('query', 'No query')}",
-                  f"Model: {meta.get('model', 'Unknown')}",
-                  f"Tokens: {meta.get('tokens', 0)}",
-                  f"Cost: ${meta.get('cost', 0):.6f}\n"]
+                 f"Model: {meta.get('model', 'Unknown')}",
+                 f"Tokens Used: {meta.get('tokens', 0)}",
+                 f"Estimated Cost: ${meta.get('cost', 0):.6f}\n"]
     if res.get("error"):
-        parts.append(f"Error: {res['error']}")
+        # Safely handle error with string conversion
+        error_str = str(res.get("error", ""))
+        parts.append(f"Error: {error_str}")
     elif "content" in res:
-        parts.append(res["content"])
-    elif res.get("results") and "content" in res["results"][0]:
-        parts.append(res["results"][0]["content"])
+        # Ensure the content is a string
+        content = str(res["content"]) if res["content"] is not None else ""
+        parts.append(content)
+    elif res.get("results") and isinstance(res.get("results"), list) and res["results"] and "content" in res["results"][0]:
+        # Also ensure content is a string here
+        content = str(res["results"][0]["content"]) if res["results"][0]["content"] is not None else ""
+        parts.append(content)
     else:
         parts.append("No content available")
     return "\n".join(parts)

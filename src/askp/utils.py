@@ -359,6 +359,38 @@ def format_path(path: str) -> str:
     except:
         return path
 
-def get_output_dir() -> Path:
-    """Get the directory for storing output files."""
-    return get_results_dir()
+DEFAULT_OUTPUT_DIR = Path.home() / "perplexity_results"
+
+def get_output_dir(output_dir: str | Path | None = None) -> Path:
+    """Determines the output directory for saving results.
+
+    Args:
+        output_dir: Optional path to a specific output directory.
+                      If None, uses DEFAULT_OUTPUT_DIR.
+
+    Returns:
+        The resolved Path object for the output directory.
+
+    Raises:
+        TypeError: If the provided output_dir is not a str or Path.
+        FileNotFoundError: If the resolved directory does not exist and cannot be created.
+    """
+    if output_dir:
+        if isinstance(output_dir, str):
+            resolved_dir = Path(output_dir).resolve()
+        elif isinstance(output_dir, Path):
+            resolved_dir = output_dir.resolve()
+        else:
+            # Should ideally raise a more specific error or log a warning
+            # For now, falling back to default, but this indicates incorrect usage.
+            print(f"Warning: Invalid type for output_dir '{type(output_dir)}'. Using default.") # Consider logging
+            resolved_dir = DEFAULT_OUTPUT_DIR
+    else:
+        resolved_dir = DEFAULT_OUTPUT_DIR
+
+    try:
+        resolved_dir.mkdir(parents=True, exist_ok=True)
+        return resolved_dir
+    except OSError as e:
+        # Handle potential permission errors or other OS issues during directory creation
+        raise FileNotFoundError(f"Could not create or access output directory: {resolved_dir}. Error: {e}")
