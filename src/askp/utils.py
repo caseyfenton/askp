@@ -4,6 +4,7 @@ Utility functions for ASKP.
 Contains functions for formatting sizes, sanitizing filenames, API key loading, model info, and path handling.
 """
 import os
+import platform
 import re
 import json
 import uuid
@@ -25,50 +26,110 @@ def sanitize_filename(q: str) -> str:
 def load_api_key() -> str:
     """Load the Perplexity API key from environment or .env files; exits if not found."""
     # Try the environment variable first
+    debug_info = ["API Key Loading Debug Info:"]
+    debug_info.append(f"OS: {os.name} / {platform.system()} {platform.release()}")
+    
     key = os.environ.get("PERPLEXITY_API_KEY")
+    debug_info.append(f"Environment variable PERPLEXITY_API_KEY exists: {key is not None}")
+    
     if key and key not in ["your_api_key_here", "pplx-", ""]:
+        debug_info.append("Using API key from environment variable")
         return key
     
     # Try keys from .env files - prioritizing home directory
     from pathlib import Path
+    
+    # Get home directory with more robust handling for Windows
+    try:
+        home_dir = Path.home()
+        debug_info.append(f"Home directory: {home_dir}")
+    except Exception as e:
+        debug_info.append(f"Error getting home directory: {e}")
+        home_dir = Path(os.path.expanduser("~"))
+        debug_info.append(f"Fallback home directory: {home_dir}")
+    
+    # Define .env file locations with better Windows compatibility
     env_locations = [
         Path.cwd() / ".env",  # Current project directory first
-        Path.home() / ".env",  # Home directory second
-        Path.home() / ".perplexity" / ".env",  # Other common locations
-        Path.home() / ".askp" / ".env"
+        home_dir / ".env",  # Home directory second
+        home_dir / ".perplexity" / ".env",  # Other common locations
+        home_dir / ".askp" / ".env"
     ]
     
+    # On Windows, also check AppData location
+    if platform.system() == "Windows":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            appdata_path = Path(appdata)
+            env_locations.extend([
+                appdata_path / "perplexity" / ".env",
+                appdata_path / "askp" / ".env"
+            ])
+    
+    debug_info.append(f"Checking .env files at: {', '.join(str(p) for p in env_locations)}")
+    
     for p in env_locations:
+        debug_info.append(f"Checking {p} (exists: {p.exists()})")
         if p.exists():
             try:
-                for line in p.read_text().splitlines():
+                env_content = p.read_text(encoding="utf-8")
+                debug_info.append(f"Successfully read {p}")
+                
+                for line in env_content.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                        
                     if line.startswith("PERPLEXITY_API_KEY="):
                         key = line.split("=", 1)[1].strip().strip('"\'' )
+                        debug_info.append(f"Found API key entry in {p}")
+                        
                         if key and key not in ["your_api_key_here", "pplx-", ""]:
+                            debug_info.append(f"Using valid API key from {p}")
                             return key
+                        else:
+                            debug_info.append(f"Invalid API key format in {p}")
             except Exception as e:
-                print(f"Warning: Error reading {p}: {e}")
+                debug_info.append(f"Error reading {p}: {e}")
     
     # If we got here, no valid key was found
     from rich import print as rprint
     from rich.panel import Panel
     
-    rprint(Panel("""[bold red]ERROR: Perplexity API Key Not Found or Invalid[/bold red]
+    # Print debug info when in verbose mode or if DEBUG env var is set
+    if os.environ.get("DEBUG") or os.environ.get("ASKP_DEBUG"):
+        rprint("\n".join(debug_info))
+    
+    # Show different instructions based on OS
+    if platform.system() == "Windows":
+        env_instructions = """   - Environment variable: 
+            • In PowerShell: $env:PERPLEXITY_API_KEY = "pplx-xxxxxxxx"
+            • In Command Prompt: set PERPLEXITY_API_KEY=pplx-xxxxxxxx
+            • Or set it permanently in System Properties > Environment Variables"""
+        file_locations = """     • %USERPROFILE%\.env
+     • %APPDATA%\askp\.env
+     • %APPDATA%\perplexity\.env"""
+    else:  # Unix-like
+        env_instructions = "   - Environment variable: PERPLEXITY_API_KEY=pplx-xxxxxxxx"
+        file_locations = """     • ~/.env (recommended)
+     • ~/.askp/.env
+     • ~/.perplexity/.env"""
+    
+    rprint(Panel(f"""[bold red]ERROR: Perplexity API Key Not Found or Invalid[/bold red]
 
 [yellow]To use ASKP, you need a valid Perplexity API key. Please follow these steps:[/yellow]
 
 1. Visit [bold]https://www.perplexity.ai/account/api/keys[/bold] to create or retrieve your API key
 2. Add your key to one of the following locations:
-   - Environment variable: PERPLEXITY_API_KEY=pplx-xxxxxxxx
+{env_instructions}
    - In a .env file in one of these locations:
-     • ~/.env (recommended)
-     • ~/.askp/.env
-     • ~/.perplexity/.env
+{file_locations}
 
 [bold]Example .env file contents:[/bold]
 PERPLEXITY_API_KEY=pplx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 [bold]Note:[/bold] Make sure your API key is valid and not expired.
+[dim]For debugging help, run with ASKP_DEBUG=1 environment variable.[/dim]
 """, title="API Key Required", border_style="red"))
     exit(1)
 
