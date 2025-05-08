@@ -1,9 +1,11 @@
-# Python
+# Python bytecode and cache files
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Distribution / packaging
 build/
 develop-eggs/
 dist/
@@ -16,33 +18,69 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytest-report.xml
+tests/test_logs/
 
 # Temporary and backup files
 tmp/
+temp/
+*~
 *.bak
 *.new
 *.swp
+*.swo
 *.tmp
+*#
+.#*
 
-# Environment
+# Environment and local config
 .env
 .venv
 env/
 venv/
 ENV/
 .python-version
+.direnv/
 
-# IDE
+# IDE and editor files
 .idea/
 .vscode/
 *.sublime-project
 *.sublime-workspace
+*.code-workspace
+.project
+.pydevproject
+.settings/
+.classpath
+.factorypath
 
-# Misc
+# OS specific files
 .DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Project specific files and directories
 perplexity_full_response.json
 *.log
 *.backup
@@ -51,14 +89,30 @@ perplexity_full_response.json
 *.enhanced
 perplexity_results/
 multi_query_results_*
-tests/test_logs/
 src/askp/cli_modifications.py
 src/askp/modify_cli*.py
 src/askp/enhance_cli.py
 src/askp/complete_cli_mod.py
 src/askp/*implementation*.md
-*.code-workspace
 .qodo
 .dev_temp/
 deprecated/
 .git-safe.git/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Local history
+.history/
+.ionide/
+
+# Sphinx documentation
+docs/_build/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Cython debug symbols
+cython_debug/
