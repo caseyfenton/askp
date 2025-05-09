@@ -106,7 +106,7 @@ def load_api_key() -> str:
             • In PowerShell: $env:PERPLEXITY_API_KEY = "pplx-xxxxxxxx"
             • In Command Prompt: set PERPLEXITY_API_KEY=pplx-xxxxxxxx
             • Or set it permanently in System Properties > Environment Variables"""
-        file_locations = """     • %USERPROFILE%\.env
+        file_locations = r"""     • %USERPROFILE%\.env
      • %APPDATA%\askp\.env
      • %APPDATA%\perplexity\.env"""
     else:  # Unix-like
@@ -389,7 +389,7 @@ def generate_combined_filename(queries: list, opts: dict = None) -> str:
         # For a single query, use a portion of the query text
         clean = re.sub(r'[^\w\s-]', '', queries[0]).strip().replace(" ", "_")[:40]
         return f"{clean}_{timestamp}{file_ext}"
-        
+    
     if len(queries) > 1:
         # For multiple queries, include the count and first query keywords
         count = len(queries)
@@ -400,11 +400,9 @@ def generate_combined_filename(queries: list, opts: dict = None) -> str:
             w = re.sub(r'[^\w\s-]', '', w)
             if w not in ['what','is','the','a','an','in','of','to','for','and','or','capital'] and w not in words:
                 words.append(w)
-                
         if words:
             query_hint = "_".join(words)[:20]
             return f"queries_{count}_{query_hint}_{timestamp}{file_ext}"
-            
     # Fallback with clear count indication
     return f"queries_{len(queries)}_{timestamp}{file_ext}"
 
@@ -420,7 +418,14 @@ def format_path(path: str) -> str:
     except:
         return path
 
-DEFAULT_OUTPUT_DIR = Path.home() / "perplexity_results"
+# Always use a local 'perplexity_results' directory in the current folder
+def get_default_output_dir() -> Path:
+    """Get the default output directory: always ./perplexity_results in the current folder."""
+    local_results = Path.cwd() / "perplexity_results"
+    local_results.mkdir(exist_ok=True)
+    return local_results
+
+DEFAULT_OUTPUT_DIR = get_default_output_dir()
 
 def get_output_dir(output_dir: str | Path | None = None) -> Path:
     """Determines the output directory for saving results.
