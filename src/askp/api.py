@@ -103,13 +103,19 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     max_tokens = int(opts.get("token_max", 4096))
     search_depth = opts.get("search_depth", "medium")
     
+    # Get debug and verbose settings first
+    verbose = opts.get("verbose", False)
+    debug = opts.get("debug", False)
+    
     # Prepare API client with appropriate configuration
     client = load_openai_client()
     if not client:
         return None
     
-    verbose = opts.get("verbose", False)
-    debug = opts.get("debug", False)
+    if debug:
+        print(f"Debug: Using API base URL: {client.base_url}")
+        print(f"Debug: API key starts with: {client.api_key[:10]}... ends with ...{client.api_key[-5:]}")
+    
     model_info = get_model_info(model)
     
     # Only display model info if not suppressed

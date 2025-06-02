@@ -32,8 +32,14 @@ def load_api_key() -> str:
     key = os.environ.get("PERPLEXITY_API_KEY")
     debug_info.append(f"Environment variable PERPLEXITY_API_KEY exists: {key is not None}")
     
+    if key:
+        # Strip any quotes from environment variable
+        key = key.strip().strip('"\'').strip()
+        debug_info.append(f"Key from env: {key[:10]}...{key[-5:]}")
+    
     if key and key not in ["your_api_key_here", "pplx-", ""]:
         debug_info.append("Using API key from environment variable")
+        print("\n".join(debug_info))
         return key
     
     # Try keys from .env files - prioritizing home directory
@@ -81,11 +87,15 @@ def load_api_key() -> str:
                         continue
                         
                     if line.startswith("PERPLEXITY_API_KEY="):
-                        key = line.split("=", 1)[1].strip().strip('"\'' )
+                        key = line.split("=", 1)[1].strip()
+                        # Strip any quotes
+                        key = key.strip('"\'').strip()
                         debug_info.append(f"Found API key entry in {p}")
                         
                         if key and key not in ["your_api_key_here", "pplx-", ""]:
                             debug_info.append(f"Using valid API key from {p}")
+                            debug_info.append(f"Key from file: {key[:10]}...{key[-5:]}")
+                            print("\n".join(debug_info))
                             return key
                         else:
                             debug_info.append(f"Invalid API key format in {p}")
