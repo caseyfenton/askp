@@ -89,7 +89,7 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--model", "-m", type=str, default="sonar-reasoning", help="Model to use (see --model-help for full details)")
 @click.option("--basic", "-b", is_flag=True, help="Use basic Sonar model (fastest, cheapest, good for simple factual queries)")
 @click.option("--reasoning-pro", "-r", is_flag=True, help="Use enhanced reasoning model (better for complex analysis, deeper context)")
-@click.option("--code", "-c", is_flag=True, help="Use code-optimized model (best for programming questions, technical analysis)")
+@click.option("--code", "-X", is_flag=True, help="Use code-optimized model (best for programming questions, technical analysis)")
 @click.option("--sonar", "-S", is_flag=True, help="Use basic Sonar model (same as -b)")
 @click.option("--sonar-pro", "-SP", is_flag=True, help="Use Sonar Pro model (highest quality but 5-10x more expensive, best for critical research)")
 @click.option("--search-depth", "-d", type=click.Choice(["low", "medium", "high"]), default="medium",
@@ -103,21 +103,22 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--max-parallel", type=int, default=5, help="Maximum number of parallel queries (higher values = faster but more API load)")
 @click.option("--file", "-i", type=click.Path(exists=True), help="Read queries from file, one per line")
 @click.option("--no-combine", "-nc", is_flag=True, help="Save each query result to a separate file (overrides default combining)")
-@click.option("--combine", "-c", "-C", is_flag=True, help="Combine multi-query results into one file (this is the default)")
+@click.option("--combine", "-C", is_flag=True, help="Combine multi-query results into one file (this is the default)")
 @click.option("--view", is_flag=True, help="Display query results directly in terminal (in addition to saving)")
 @click.option("--view-lines", type=int, default=None, help="Set maximum number of lines to display in terminal")
 @click.option("--expand", "-e", type=int, help="Generate additional related queries to reach this total (e.g. -e 5 turns 1 query into 5)")
 @click.option("--deep", "-D", is_flag=True, help="Use Perplexity's built-in deep research mode (faster, more efficient)")
 @click.option("--deep-custom", is_flag=True, help="Use custom multi-query deep research (more transparent, good for specialized research)")
 @click.option("--cleanup-component-files", is_flag=True, help="Remove intermediate files after deep research completes")
-@click.option("--quick", "-Q", is_flag=True, help="Get concise answers for multiple questions in a single API call (fastest)")
+@click.option("--comprehensive", "--comp", "-c", is_flag=True, help="Process each query separately with comprehensive results (slower but more detailed)")
+@click.option("--quick", "-Q", is_flag=True, help="[DEPRECATED] Quick mode is now the default (combining multiple questions into a single API call)")
 @click.option("--code-check", "-cc", type=click.Path(exists=True), help="Check code file for bugs, improvements, and security issues")
 @click.option("--debug", is_flag=True, help="Save raw API responses for debugging and analysis")
 @click.option("--account-status", "--credits", is_flag=True, help="Check account status and remaining API credits")
 @click.option("--account-details", is_flag=True, help="Show detailed account information including rate limits")
 def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro, 
         search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file, 
-        no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, quick, code_check, debug,
+        no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, comprehensive, quick, code_check, debug,
         account_status, account_details):
     """ASKP - Advanced knowledge search using Perplexity AI
 
@@ -126,7 +127,9 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
     
     Simple Example: askp "What is quantum computing?"
     
-    Multi-query Example: askp "Python packaging" "Virtual environments" "Poetry vs pip"
+    Multi-query Example: askp "Python packaging" "Virtual environments" "Poetry vs pip"  # Combined by default
+    
+    Comprehensive Mode: askp -c "Python packaging" "Virtual environments" "Poetry vs pip"  # Process separately
     
     Deep Research: askp -D "History and impact of renewable energy"
     
@@ -192,7 +195,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
          "search_depth": search_depth, "combine": not no_combine, "max_parallel": max_parallel, 
          "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set, 
          "output_dir": get_output_dir(), "multi": not single,
-         "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "debug": debug,
+         "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "comprehensive": comprehensive, "debug": debug,
          "no_combine": no_combine}
     if expand:
         opts["expand"] = expand
@@ -209,29 +212,45 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         is_deep, deep_opts = setup_deep_research(quiet, model, temperature, reasoning_set, opts["output_dir"], custom=False)
         opts.update(deep_opts)
     
-    # Process quick mode - combine all queries into one
-    if quick and len(queries) > 1:
-        combined_query = " ".join([f"Q{i+1}: {q}" for i, q in enumerate(queries)])
-        if not quiet:
-            print(f"Quick mode: Combining {len(queries)} queries into one request")
-        from .executor import execute_query, output_result
-        r = execute_query(combined_query, 0, opts)
-        if not r:
-            print("Error: Failed to get response from Perplexity API")
-            sys.exit(1)
-        output_result(r, opts)
-    elif expand and expand > len(queries):
+    # Process queries based on mode
+    if expand and expand > len(queries):
         print(f"Expanding {len(queries)} queries to {expand} total queries...")
         from .expand import generate_expanded_queries
         queries = generate_expanded_queries(queries, expand, model=model, temperature=temperature)
-    elif not single or file or len(queries) > 1:
+    # Process comprehensive mode (old default behavior)
+    elif comprehensive and len(queries) > 1:
+        if not quiet:
+            print("\n⏳ Processing queries in comprehensive mode...")
+            print(f"   Model: {model} | Temperature: {temperature}")
+            print("   Each query processed separately for detailed results")
+            print("   Please wait...\n")
+        
         from .executor import handle_multi_query, output_multi_results
         res = handle_multi_query(queries, opts)
         if not res:
             print("Error: Failed to process queries")
             sys.exit(1)
         output_multi_results(res, opts)
+    # Process multiple queries with default (quick) mode
+    elif len(queries) > 1:
+        combined_query = " ".join([f"Q{i+1}: {q}" for i, q in enumerate(queries)])
+        if not quiet:
+            print(f"\n⏳ Processing {len(queries)} queries in combined mode (default)...")
+            print(f"   Model: {model} | Temperature: {temperature}")
+            print("   Please wait...\n")
+        from .executor import execute_query, output_result
+        r = execute_query(combined_query, 0, opts)
+        if not r:
+            print("Error: Failed to get response from Perplexity API")
+            sys.exit(1)
+        output_result(r, opts)
     else:
+        # Display processing message
+        if not quiet:
+            print("\n⏳ Processing query with Perplexity API...")
+            print(f"   Model: {model} | Temperature: {temperature}")
+            print("   Please wait...\n")
+        
         from .executor import execute_query, output_result
         r = execute_query(queries[0], 0, opts)
         if not r:
