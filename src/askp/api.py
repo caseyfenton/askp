@@ -43,12 +43,13 @@ class PerplexityResponse(TypedDict, total=False):
     raw_response: Optional[Any]
     citations: Optional[List[str]]
     
-def load_openai_client(api_key: Optional[str] = None) -> openai.OpenAI:
+def load_openai_client(api_key: Optional[str] = None, debug: bool = False) -> openai.OpenAI:
     """
     Load OpenAI client with appropriate configuration for Perplexity API.
     
     Args:
         api_key: Optional API key to use instead of environment variable
+        debug: Whether to show debug information
         
     Returns:
         Configured OpenAI client for Perplexity API
@@ -58,7 +59,7 @@ def load_openai_client(api_key: Optional[str] = None) -> openai.OpenAI:
     """
     from askp.cli import load_api_key, OpenAI
     
-    api_key = api_key or load_api_key()
+    api_key = api_key or load_api_key(debug=debug)
     if not api_key:
         raise ValueError("No API key found. Set PERPLEXITY_API_KEY environment variable or create a .env file.")
     
@@ -108,7 +109,7 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     debug = opts.get("debug", False)
     
     # Prepare API client with appropriate configuration
-    client = load_openai_client()
+    client = load_openai_client(debug=debug)
     if not client:
         return None
     
@@ -120,7 +121,9 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     
     # Only display model info if not suppressed
     if not opts.get("suppress_model_display", False):
-        rprint(f"Model: {model_info['display_name']} | Temp: {temperature}")
+        # Format the model info with all components on one line
+        model_type = "(default)" if model == "sonar-reasoning" else ""
+        rprint(f"Model: {model_info['display_name']} {model_type} | Temp: {temperature}")
     
     start_time = time.time()
     
@@ -248,12 +251,13 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
         rprint(f"{error_msg}")
         return None
 
-def get_account_status(api_key: Optional[str] = None) -> Dict[str, Any]:
+def get_account_status(api_key: Optional[str] = None, debug: bool = False) -> Dict[str, Any]:
     """
     Get Perplexity account status including remaining credits.
     
     Args:
         api_key: Optional API key to use instead of environment variable
+        debug: Whether to enable debug mode
         
     Returns:
         Dictionary containing account status information
@@ -261,7 +265,7 @@ def get_account_status(api_key: Optional[str] = None) -> Dict[str, Any]:
     from askp.utils import load_api_key
     
     try:
-        api_key = api_key or load_api_key()
+        api_key = api_key or load_api_key(debug=debug)
         client = openai.OpenAI(
             api_key=api_key,
             base_url="https://api.perplexity.ai"
@@ -324,15 +328,16 @@ def get_account_status(api_key: Optional[str] = None) -> Dict[str, Any]:
             "error": f"Error checking account status: {str(e)}"
         }
 
-def display_account_status(api_key: Optional[str] = None, verbose: bool = False) -> None:
+def display_account_status(api_key: Optional[str] = None, verbose: bool = False, debug: bool = False) -> None:
     """
     Display Perplexity account status including remaining credits in a nice format.
     
     Args:
         api_key: Optional API key to use instead of environment variable
         verbose: Whether to show more detailed information
+        debug: Whether to enable debug mode
     """
-    status = get_account_status(api_key)
+    status = get_account_status(api_key, debug=debug)
     
     if "error" in status:
         rprint(Panel(

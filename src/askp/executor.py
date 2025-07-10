@@ -247,9 +247,8 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
             print(f"\nProcessing {len(queries)} queries in parallel...")
     else:
         # Only show basic processing message if not a sub-query of deep research
-        if not opts.get("processing_subqueries", False):
-            if not opts.get("quiet", False):
-                print(f"\nProcessing query...")
+        # Processing message is now handled by the CLI module
+        pass
         
     from .utils import get_model_info
     model = opts.get("model", "sonar-reasoning")
@@ -408,12 +407,19 @@ def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
         except PermissionError:
             print(f"Error: Permission denied writing to {opts['output']}")
     else:
-        import click
-        click.echo(out)
+        # Only echo output if not being displayed by other means
+        if not opts.get("human", False) and not opts.get("view", False):
+            import click
+            click.echo(out)
+    
+    # Show where results are saved
     if not opts.get("quiet", False) and fmt != "json":
-        op_dir = format_path(get_output_dir())
-        print(f"Results saved to: {op_dir}")
         saved_path = saved_path or res.get("metadata", {}).get("saved_path")
+        if saved_path:
+            rel_path = format_path(saved_path)
+            print(f"\n📁 Full results saved to: {rel_path}")
+    
+    # Show tips occasionally
     if saved_path and not opts.get("quiet", False):
         from .tips import get_formatted_tip
         if not opts.get("quiet", False) and not opts.get("multi", False):
@@ -580,9 +586,12 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     
     # Handle viewing content directly vs showing paths based on --view flag
     if not opts.get("quiet", False):
-        if opts.get("view") and fmt == "markdown":
-            # Display content directly if --view flag is used
-            print("\nQuery Results:")
+        # Auto-view content if it's a single result OR if --view flag is explicitly used
+        should_view = opts.get("view") or (len(results) == 1 and fmt == "markdown")
+        
+        if should_view and fmt == "markdown":
+            # Display content directly
+            print("\n📊 Query Results:")
             
             if is_deep and not is_custom_deep:
                 # For built-in deep research, just show the main content
@@ -608,7 +617,7 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
                         view_lines = opts.get("view_lines")
                         max_lines = view_lines if view_lines is not None else 200
                         
-                        print(f"\nQuery {i+1}: {r['query']}")
+                        print(f"\n📝 Query {i+1}: {r['query']}")
                         
                         # Display content with line limit
                         content_lines = r["content"].split('\n')
@@ -621,6 +630,7 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
                         else:
                             print(r["content"])
             
+            # Always show where the file is saved
             print(f"\nFull results saved to: {rel_path}")
         else:
             # Only show the combined results message for multiple queries, not single queries
@@ -632,6 +642,9 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
                 # Only show command suggestions if we're not already viewing the content with --view
                 if fmt == "markdown" and not is_deep:
                     suggest_cat_commands(results, out_dir)
+            else:
+                # For single results that aren't being viewed, show where the file is saved
+                print(f"Results saved to: {rel_path}")
     
     # Also include the stats summary
     if not opts.get("quiet", False):

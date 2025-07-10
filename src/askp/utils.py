@@ -4,7 +4,6 @@ Utility functions for ASKP.
 Contains functions for formatting sizes, sanitizing filenames, API key loading, model info, and path handling.
 """
 import os
-import platform
 import re
 import json
 import uuid
@@ -12,7 +11,10 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, Any, List
+
+from rich import print as rprint
+from rich.panel import Panel
 
 def format_size(s: int) -> str:
     """Format byte size with appropriate unit."""
@@ -23,23 +25,25 @@ def sanitize_filename(q: str) -> str:
     s = "".join(c if c.isalnum() else "_" for c in q)
     return s[:50] if s.strip("_") else "query"
 
-def load_api_key() -> str:
+def load_api_key(debug=False) -> str:
     """Load the Perplexity API key from environment or .env files; exits if not found."""
     # Try the environment variable first
-    debug_info = ["API Key Loading Debug Info:"]
-    debug_info.append(f"OS: {os.name} / {platform.system()} {platform.release()}")
+    debug_info = ["API Key Loading Debug Info:"] if debug else []
     
     key = os.environ.get("PERPLEXITY_API_KEY")
-    debug_info.append(f"Environment variable PERPLEXITY_API_KEY exists: {key is not None}")
+    if debug:
+        debug_info.append(f"Environment variable PERPLEXITY_API_KEY exists: {key is not None}")
     
     if key:
         # Strip any quotes from environment variable
-        key = key.strip().strip('"\'').strip()
-        debug_info.append(f"Key from env: {key[:10]}...{key[-5:]}")
+        key = key.strip().strip('"').strip("'").strip()
+        if debug:
+            debug_info.append(f"Key from env: {key[:10]}...{key[-5:]}")
     
     if key and key not in ["your_api_key_here", "pplx-", ""]:
-        debug_info.append("Using API key from environment variable")
-        print("\n".join(debug_info))
+        if debug:
+            debug_info.append("Using API key from environment variable")
+            print("\n".join(debug_info))
         return key
     
     # Try keys from .env files - prioritizing home directory
@@ -48,11 +52,14 @@ def load_api_key() -> str:
     # Get home directory with more robust handling for Windows
     try:
         home_dir = Path.home()
-        debug_info.append(f"Home directory: {home_dir}")
+        if debug:
+            debug_info.append(f"Home directory: {home_dir}")
     except Exception as e:
-        debug_info.append(f"Error getting home directory: {e}")
+        if debug:
+            debug_info.append(f"Error getting home directory: {e}")
         home_dir = Path(os.path.expanduser("~"))
-        debug_info.append(f"Fallback home directory: {home_dir}")
+        if debug:
+            debug_info.append(f"Fallback home directory: {home_dir}")
     
     # Define .env file locations with better Windows compatibility
     env_locations = [
@@ -62,24 +69,17 @@ def load_api_key() -> str:
         home_dir / ".askp" / ".env"
     ]
     
-    # On Windows, also check AppData location
-    if platform.system() == "Windows":
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            appdata_path = Path(appdata)
-            env_locations.extend([
-                appdata_path / "perplexity" / ".env",
-                appdata_path / "askp" / ".env"
-            ])
-    
-    debug_info.append(f"Checking .env files at: {', '.join(str(p) for p in env_locations)}")
+    if debug:
+        debug_info.append(f"Checking .env files at: {', '.join(str(p) for p in env_locations)}")
     
     for p in env_locations:
-        debug_info.append(f"Checking {p} (exists: {p.exists()})")
+        if debug:
+            debug_info.append(f"Checking {p} (exists: {p.exists()})")
         if p.exists():
             try:
                 env_content = p.read_text(encoding="utf-8")
-                debug_info.append(f"Successfully read {p}")
+                if debug:
+                    debug_info.append(f"Successfully read {p}")
                 
                 for line in env_content.splitlines():
                     line = line.strip()
@@ -89,59 +89,40 @@ def load_api_key() -> str:
                     if line.startswith("PERPLEXITY_API_KEY="):
                         key = line.split("=", 1)[1].strip()
                         # Strip any quotes
-                        key = key.strip('"\'').strip()
-                        debug_info.append(f"Found API key entry in {p}")
+                        key = key.strip('"').strip("'").strip()
+                        if debug:
+                            debug_info.append(f"Found API key entry in {p}")
                         
                         if key and key not in ["your_api_key_here", "pplx-", ""]:
-                            debug_info.append(f"Using valid API key from {p}")
-                            debug_info.append(f"Key from file: {key[:10]}...{key[-5:]}")
-                            print("\n".join(debug_info))
+                            if debug:
+                                debug_info.append(f"Using valid API key from {p}")
+                                debug_info.append(f"Key from file: {key[:10]}...{key[-5:]}")
+                                print("\n".join(debug_info))
                             return key
-                        else:
-                            debug_info.append(f"Invalid API key format in {p}")
             except Exception as e:
-                debug_info.append(f"Error reading {p}: {e}")
+                if debug:
+                    debug_info.append(f"Error reading {p}: {e}")
     
-    # If we got here, no valid key was found
-    from rich import print as rprint
-    from rich.panel import Panel
+    # If no API key was found, display an error message and exit
+    if debug:
+        print("\n".join(debug_info))
     
-    # Print debug info when in verbose mode or if DEBUG env var is set
-    if os.environ.get("DEBUG") or os.environ.get("ASKP_DEBUG"):
-        rprint("\n".join(debug_info))
-    
-    # Show different instructions based on OS
-    if platform.system() == "Windows":
-        env_instructions = """   - Environment variable: 
-            • In PowerShell: $env:PERPLEXITY_API_KEY = "pplx-xxxxxxxx"
-            • In Command Prompt: set PERPLEXITY_API_KEY=pplx-xxxxxxxx
-            • Or set it permanently in System Properties > Environment Variables"""
-        file_locations = r"""     • %USERPROFILE%\.env
-     • %APPDATA%\askp\.env
-     • %APPDATA%\perplexity\.env"""
-    else:  # Unix-like
-        env_instructions = "   - Environment variable: PERPLEXITY_API_KEY=pplx-xxxxxxxx"
-        file_locations = """     • ~/.env (recommended)
-     • ~/.askp/.env
-     • ~/.perplexity/.env"""
-    
-    rprint(Panel(f"""[bold red]ERROR: Perplexity API Key Not Found or Invalid[/bold red]
+    # If no API key was found, display an error message
+    if not key:
+        file_locations = "     * ~/.env (recommended)\n     * ~/.askp/.env\n     * ~/.perplexity/.env"
+        rprint(Panel(f"""[bold red]ERROR: Perplexity API Key Not Found or Invalid[/bold red]
 
 [yellow]To use ASKP, you need a valid Perplexity API key. Please follow these steps:[/yellow]
 
 1. Visit [bold]https://www.perplexity.ai/account/api/keys[/bold] to create or retrieve your API key
 2. Add your key to one of the following locations:
-{env_instructions}
-   - In a .env file in one of these locations:
 {file_locations}
-
-[bold]Example .env file contents:[/bold]
-PERPLEXITY_API_KEY=pplx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+3. Format should be: PERPLEXITY_API_KEY=your_key_here
 
 [bold]Note:[/bold] Make sure your API key is valid and not expired.
 [dim]For debugging help, run with ASKP_DEBUG=1 environment variable.[/dim]
 """, title="API Key Required", border_style="red"))
-    exit(1)
+        exit(1)
 
 def get_model_info(model: str) -> Dict:
     """Get information about a model including cost and display name."""
@@ -150,21 +131,22 @@ def get_model_info(model: str) -> Dict:
     model_info = {
         "model": model,
         "cost_per_million": 1.0,  # Default cost
-        "display_name": model
+        "display_name": model,
     }
     
-    if model == "sonar":
-        model_info["display_name"] = "sonar (basic)"
+    # Map models to their display names and costs
+    if model == "sonar-reasoning":
+        model_info["display_name"] = "sonar-reasoning"
         model_info["cost_per_million"] = 1.0
-    elif model == "sonar-pro":
-        model_info["display_name"] = "sonar-pro (EXPENSIVE)"
-        model_info["cost_per_million"] = 15.0
-    elif model == "sonar-reasoning":
-        model_info["display_name"] = "sonar-reasoning (default)"
-        model_info["cost_per_million"] = 5.0
     elif model == "sonar-reasoning-pro":
-        model_info["display_name"] = "sonar-reasoning-pro (enhanced)"
-        model_info["cost_per_million"] = 8.0
+        model_info["display_name"] = "sonar-reasoning-pro"
+        model_info["cost_per_million"] = 2.0
+    elif model == "sonar":
+        model_info["display_name"] = "sonar"
+        model_info["cost_per_million"] = 0.5
+    elif model == "sonar-pro":
+        model_info["display_name"] = "sonar-pro"
+        model_info["cost_per_million"] = 1.5
     elif model == "sonar-deep-research":
         model_info["display_name"] = "sonar-deep-research"
         model_info["cost_per_million"] = 8.0
@@ -175,7 +157,7 @@ def get_model_info(model: str) -> Dict:
     return model_info
 
 def normalize_model_name(model: Union[str, dict]) -> str:
-    """Normalize model name to match Perplexity's expected format."""
+    """Normalize model name to match Perplexity API format."""
     if not model:
         return "sonar-pro"
         
@@ -196,20 +178,22 @@ def normalize_model_name(model: Union[str, dict]) -> str:
         "sonarreasoning": "sonar-reasoning",
         "sonarreasoningpro": "sonar-reasoning-pro",
         "sonardeepresearch": "sonar-deep-research",
-        "prosonar": "sonar-pro", 
-        "pro": "sonar-pro",
-        # Handle legacy name (deprecated)
-        "sonarproreasoning": "sonar-reasoning-pro",
         
-        # Llama 3.1 models
-        "llama31small": "llama-3.1-sonar-small-128k-online",
-        "llama31large": "llama-3.1-sonar-large-128k-online",
-        "llama31smallchat": "llama-3.1-sonar-small-128k-chat",
-        "llama31largechat": "llama-3.1-sonar-large-128k-chat",
-        "llama3170b": "llama-3.1-70b-instruct",
+        # Llama 3.1 Sonar Models 
+        "llama31sonarsm": "llama-3.1-sonar-small-128k-online",
+        "llama31sonarlg": "llama-3.1-sonar-large-128k-online",
+        "llama31sonarsmonline": "llama-3.1-sonar-small-128k-online",
+        "llama31sonarlgonline": "llama-3.1-sonar-large-128k-online",
+        "llama31sonarsmchat": "llama-3.1-sonar-small-128k-chat",
+        "llama31sonarlgchat": "llama-3.1-sonar-large-128k-chat",
+        
+        # Llama 3.1 Instruct Models
         "llama318b": "llama-3.1-8b-instruct",
+        "llama3170b": "llama-3.1-70b-instruct", 
+        "llama318binstruct": "llama-3.1-8b-instruct",
+        "llama3170binstruct": "llama-3.1-70b-instruct",
         
-        # Mixtral and PPLX models
+        # PPLX models
         "mixtral": "mixtral-8x7b-instruct",
         "pplx7b": "pplx-7b-online",
         "pplx70b": "pplx-70b-online",
@@ -228,28 +212,31 @@ def detect_model(response_data: Union[dict, str], filename: str = None) -> str:
     if filename:
         model_indicators = {
             "sonar-pro": ["sonarpro", "sonar_pro"],
+            "sonar": ["sonar"],  
             "sonar-reasoning": ["sonarreasoning", "sonar_reasoning"],
             "sonar-reasoning-pro": ["sonarreasoningpro", "sonar_reasoning_pro"],
-            "sonar-deep-research": ["sonardeepresearch", "sonar_deep_research"],
-            "llama-3.1-sonar-small-128k-online": ["llama31small", "llama_3_1_small"],
-            "llama-3.1-sonar-large-128k-online": ["llama31large", "llama_3_1_large"],
-            "mixtral-8x7b-instruct": ["mixtral", "mixtral8x7b"],
+            "llama-3.1-8b-instruct": ["llama318b", "llama31_8b"],
+            "llama-3.1-70b-instruct": ["llama3170b", "llama31_70b"],
+            "mixtral-8x7b-instruct": ["mixtral"],
+            "pplx-7b-online": ["pplx7b"],
+            "pplx-70b-online": ["pplx70b"],
+            "r1-1776": ["r1"]
         }
         
-        filename_lower = filename.lower()
+        # Check if any model indicators are in the filename
         for model, indicators in model_indicators.items():
             for indicator in indicators:
-                if indicator in filename_lower:
+                if indicator.lower() in filename.lower():
                     return model
     
-    # If we have JSON response data, try to extract model info
+    # Try to get the model from the response data metadata
     if isinstance(response_data, dict):
-        # Check for model field in various locations
         if "model" in response_data:
             return response_data["model"]
-        if "metadata" in response_data and isinstance(response_data["metadata"], dict):
-            if "model" in response_data["metadata"]:
-                return response_data["metadata"]["model"]
+        if "metadata" in response_data:
+            if isinstance(response_data["metadata"], dict):
+                if "model" in response_data["metadata"]:
+                    return response_data["metadata"]["model"]
     
     # Default to sonar-reasoning if we can't detect
     return "sonar-reasoning"
@@ -259,25 +246,27 @@ def estimate_cost(response_data: Union[dict, str], model: str = None) -> float:
     # Default cost if we can't determine
     default_cost = 0.005  # $0.005 per query
     
-    # If model is not provided, try to detect it
-    if not model and isinstance(response_data, dict):
+    # Determine the model if not provided
+    if model is None:
         model = detect_model(response_data)
+        
+    # Get model info including cost
+    model_info = get_model_info(model)
     
-    # Get model info
-    model_info = get_model_info(model) if model else {"cost_per_million": 5.0}
+    # Try to extract token count from the response
+    token_count = 0
     
-    # Calculate cost based on token count if available
     if isinstance(response_data, dict):
-        # Check for token count in metadata
-        token_count = 0
-        if "metadata" in response_data and isinstance(response_data["metadata"], dict):
+        # First try to get the token count directly
+        if "tokens" in response_data and isinstance(response_data["tokens"], int):
+            token_count = response_data["tokens"]
+        # Otherwise try to get it from the metadata
+        elif "metadata" in response_data and isinstance(response_data["metadata"], dict):
             metadata = response_data["metadata"]
             if "usage" in metadata and isinstance(metadata["usage"], dict):
                 usage = metadata["usage"]
-                if "total_tokens" in usage:
+                if "total_tokens" in usage and isinstance(usage["total_tokens"], int):
                     token_count = usage["total_tokens"]
-                elif "completion_tokens" in usage and "prompt_tokens" in usage:
-                    token_count = usage["completion_tokens"] + usage["prompt_tokens"]
         
         if token_count > 0:
             # Calculate cost based on tokens and model rate
@@ -296,7 +285,7 @@ def get_results_dir(output_dir: str = None) -> Path:
     Returns:
         Path object for the results directory
     """
-    # If user specified a directory, use that
+    # If user specified an output directory, try to use that
     if output_dir:
         d = Path(output_dir)
         d.mkdir(exist_ok=True, parents=True)
@@ -317,32 +306,29 @@ def get_results_dir(output_dir: str = None) -> Path:
         except (PermissionError, OSError):
             pass
             
-        # 2. Try script directory
+    if not d:
+        # 2. Try ~/.askp directory
         try:
-            script_path = Path(sys.argv[0]).resolve()
-            if script_path.exists() and script_path.is_file():
-                script_dir = script_path.parent
-                if os.access(script_dir, os.W_OK):
-                    d = script_dir / "perplexity_results"
-                    d.mkdir(exist_ok=True)
-                    return d
-        except (IndexError, PermissionError):
-            pass
-        
-        # 3. Try current working directory
-        try:
-            cwd = Path.cwd()
-            d = cwd / "perplexity_results"
-            # Test if we can write to this directory
+            home_dir = Path.home()
+            d = home_dir / ".askp" 
             d.mkdir(exist_ok=True)
-            test_file = d / ".write_test"
-            test_file.touch()
-            test_file.unlink()
-            return d
+            if os.access(d, os.W_OK):
+                return d
+        except (PermissionError, OSError):
+            pass
+    
+    if not d:
+        # 3. Try ./perplexity_results directory (in current dir)
+        try:
+            d = Path.cwd() / "perplexity_results"
+            d.mkdir(exist_ok=True)
+            if os.access(d, os.W_OK):
+                return d
         except (PermissionError, OSError):
             pass
             
-        # 4. Try user's home directory
+    if not d:        
+        # 4. Try ~/perplexity_results directory
         try:
             home_dir = Path.home()
             d = home_dir / "perplexity_results" 
@@ -365,29 +351,28 @@ def generate_combined_filename(queries: list, opts: dict = None) -> str:
     
     Args:
         queries: List of query strings
-        opts: Options dictionary containing format and other preferences
-        
+        opts: Optional dictionary with extra options
+    
     Returns:
-        Filename for combined results with appropriate extension
+        A descriptive filename with extension
     """
-    if opts is None:
+    if not opts:
         opts = {}
         
-    # Determine file extension based on format
-    format_type = opts.get("format", "markdown").lower()
-    if format_type == "json":
-        file_ext = ".json"
-    elif format_type == "text":
-        file_ext = ".txt"
-    else:  # Default to markdown
-        file_ext = ".md"
+    # Check if a custom filename is provided
+    custom_name = opts.get("output") 
+    file_ext = ".md"  # Default extension
     
-    # If output is specified, respect it but ensure correct extension
-    if opts.get("output"):
-        base = os.path.basename(opts["output"])
-        # Replace extension if it doesn't match the requested format
-        if not base.endswith(file_ext):
-            base_name = os.path.splitext(base)[0]
+    # Apply code formatting if needed
+    if opts.get("code"):
+        file_ext = ".py" if not custom_name or "." not in custom_name else ""
+        
+    if custom_name:
+        # Use the provided filename
+        base = custom_name
+        # Add extension if needed
+        if "." not in base:
+            base_name = base.rstrip(".")
             return f"{base_name}{file_ext}"
         return base
     
@@ -430,14 +415,29 @@ def format_path(path: str) -> str:
 
 # Always use a local 'perplexity_results' directory in the current folder
 def get_default_output_dir() -> Path:
-    """Get the default output directory: always ./perplexity_results in the current folder."""
-    local_results = Path.cwd() / "perplexity_results"
-    local_results.mkdir(exist_ok=True)
-    return local_results
+    """
+    Get the default output directory.
+    Tries to create perplexity_results in the current directory.
+    If that fails due to permissions, it falls back to a directory in the users home folder.
+    """
+    try:
+        # Try to create in the current working directory first
+        local_results = Path.cwd() / "perplexity_results"
+        local_results.mkdir(parents=True, exist_ok=True)
+        # Test writability by creating and deleting a temporary file
+        test_file = local_results / ".writable_test"
+        test_file.touch()
+        test_file.unlink()
+        return local_results
+    except (OSError, PermissionError):
+        # If CWD is not writable (e.g., root '/'), fall back to a user-specific cache directory
+        home_results = Path.home() / ".cache" / "askp" / "results"
+        home_results.mkdir(parents=True, exist_ok=True)
+        return home_results
 
 DEFAULT_OUTPUT_DIR = get_default_output_dir()
 
-def get_output_dir(output_dir: str | Path | None = None) -> Path:
+def get_output_dir(output_dir: Union[str, Path, None] = None) -> Path:
     """Determines the output directory for saving results.
 
     Args:
