@@ -1,0 +1,45 @@
+{
+  "lastRun": "2025-07-09T11:34:36.069Z",
+  "current": {
+    "timestamp": "2025-07-09T11:34:36.069Z",
+    "extensionActive": true,
+    "commandsRegistered": [
+      "claudeAgentMonitor.focus",
+      "claudeAgentMonitor.resetViewLocation",
+      "claudeAgentMonitor.toggleVisibility",
+      "claudeAgentMonitor.removeView"
+    ],
+    "treeViewVisible": false,
+    "windsurfVersion": "1.99.3-next",
+    "extensionVersion": "1.0.9",
+    "errors": [],
+    "warnings": [],
+    "environment": {
+      "platform": "darwin",
+      "vsCodeVersion": "1.99.3-next",
+      "workspaceFolder": "/Users/casey/CascadeProjects/askp"
+    }
+  },
+  "history": [
+    {
+      "timestamp": "2025-07-09T11:34:36.069Z",
+      "extensionActive": true,
+      "commandsRegistered": [
+        "claudeAgentMonitor.focus",
+        "claudeAgentMonitor.resetViewLocation",
+        "claudeAgentMonitor.toggleVisibility",
+        "claudeAgentMonitor.removeView"
+      ],
+      "treeViewVisible": false,
+      "windsurfVersion": "1.99.3-next",
+      "extensionVersion": "1.0.9",
+      "errors": [],
+      "warnings": [],
+      "environment": {
+        "platform": "darwin",
+        "vsCodeVersion": "1.99.3-next",
+        "workspaceFolder": "/Users/casey/CascadeProjects/askp"
+      }
+    }
+  ]
+}

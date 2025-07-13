@@ -119,8 +119,8 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     
     model_info = get_model_info(model)
     
-    # Only display model info if not suppressed
-    if not opts.get("suppress_model_display", False):
+    # Only display model info if debug is enabled and not explicitly suppressed
+    if debug and not opts.get("suppress_model_display", False):
         # Format the model info with all components on one line
         model_type = "(default)" if model == "sonar-reasoning" else ""
         rprint(f"Model: {model_info['display_name']} {model_type} | Temp: {temperature}")

@@ -1,5 +1,20 @@
 # ASKP Model Help
 
+## ⚠️ IMPORTANT COST WARNING ⚠️
+
+**🚨 EXPENSIVE MODELS - USE WITH EXTREME CAUTION 🚨**
+
+The following models are **10-20X MORE EXPENSIVE** than standard models:
+- `sonar-reasoning-pro` (-r flag)
+- `sonar-pro` 
+- Any model with "pro" in the name
+
+**DO NOT USE THESE MODELS UNLESS SPECIFICALLY REQUESTED OR FOR CRITICAL COMPLEX REASONING TASKS**
+
+For most queries, use:
+- `sonar-reasoning` (default) - Good balance of quality and cost
+- `sonar` (-b flag) - Cheapest for simple factual queries
+
 ## Available Models
 
 | Model | Description | Web Search | Cost | Best For | Flag |

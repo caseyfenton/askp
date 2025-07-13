@@ -88,10 +88,10 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--num-results", "-n", type=int, default=1, help="Number of results per query")
 @click.option("--model", "-m", type=str, default="sonar-reasoning", help="Model to use (see --model-help for full details)")
 @click.option("--basic", "-b", is_flag=True, help="Use basic Sonar model (fastest, cheapest, good for simple factual queries)")
-@click.option("--reasoning-pro", "-r", is_flag=True, help="Use enhanced reasoning model (better for complex analysis, deeper context)")
+@click.option("--reasoning-pro", "-r", is_flag=True, help="⚠️ EXPENSIVE: Use enhanced reasoning model (10-20x cost, better for complex analysis)")
 @click.option("--code", "-X", is_flag=True, help="Use code-optimized model (best for programming questions, technical analysis)")
 @click.option("--sonar", "-S", is_flag=True, help="Use basic Sonar model (same as -b)")
-@click.option("--sonar-pro", "-SP", is_flag=True, help="Use Sonar Pro model (highest quality but 5-10x more expensive, best for critical research)")
+@click.option("--sonar-pro", "-SP", is_flag=True, help="⚠️ VERY EXPENSIVE: Use Sonar Pro model (20x cost, only for critical research)")
 @click.option("--search-depth", "-d", type=click.Choice(["low", "medium", "high"]), default="medium",
               help="Search depth: low (minimal info, fastest), medium (balanced), high (comprehensive, slower)")
 @click.option("--temperature", "-t", type=float, default=0.7, help="Temperature (0.1-1.0): lower for focused/deterministic, higher for creative responses")
@@ -164,6 +164,21 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         
     # Normalize the model name
     model = normalize_model_name(model)
+    
+    # ⚠️ COST WARNING FOR EXPENSIVE MODELS ⚠️
+    expensive_models = ["sonar-reasoning-pro", "sonar-pro", "reasoning-pro", "pro"]
+    if any(expensive in model.lower() for expensive in expensive_models):
+        if not quiet:
+            rprint("\n" + "="*80)
+            rprint("[bold red]⚠️  EXPENSIVE MODEL WARNING - USE WITH CAUTION ⚠️[/bold red]")
+            rprint("="*80)
+            rprint(f"[bold yellow]You are using model: {model}[/bold yellow]")
+            rprint("[bold red]THIS MODEL IS 10-20X MORE EXPENSIVE THAN STANDARD MODELS[/bold red]")
+            rprint("[yellow]- Only use for complex reasoning tasks that require advanced capabilities[/yellow]")
+            rprint("[yellow]- Consider using 'sonar-reasoning' or 'sonar' for most queries[/yellow]")
+            rprint("[yellow]- Each query may cost significantly more API credits[/yellow]")
+            rprint("="*80 + "\n")
+    
     token_max_set = token_max is not None
     reasoning_set = reasoning or reasoning_pro or pro_reasoning
     queries = []
@@ -221,7 +236,8 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
     elif comprehensive and len(queries) > 1:
         if not quiet:
             print("\n⏳ Processing queries in comprehensive mode...")
-            print(f"   Model: {model} | Temperature: {temperature}")
+            if debug:
+                print(f"   Model: {model} | Temperature: {temperature}")
             print("   Each query processed separately for detailed results")
             print("   Please wait...\n")
         
@@ -236,7 +252,8 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         combined_query = " ".join([f"Q{i+1}: {q}" for i, q in enumerate(queries)])
         if not quiet:
             print(f"\n⏳ Processing {len(queries)} queries in combined mode (default)...")
-            print(f"   Model: {model} | Temperature: {temperature}")
+            if debug:
+                print(f"   Model: {model} | Temperature: {temperature}")
             print("   Please wait...\n")
         from .executor import execute_query, output_result
         r = execute_query(combined_query, 0, opts)
@@ -248,7 +265,8 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         # Display processing message
         if not quiet:
             print("\n⏳ Processing query with Perplexity API...")
-            print(f"   Model: {model} | Temperature: {temperature}")
+            if debug:
+                print(f"   Model: {model} | Temperature: {temperature}")
             print("   Please wait...\n")
         
         from .executor import execute_query, output_result
