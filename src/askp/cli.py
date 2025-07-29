@@ -26,7 +26,7 @@ from .utils import (load_api_key, format_size, sanitize_filename, get_model_info
                    normalize_model_name, estimate_cost, get_output_dir,
                    generate_combined_filename, generate_unique_id)
 console = Console()
-VERSION = "2.4.4"
+VERSION = "2.4.5"
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
