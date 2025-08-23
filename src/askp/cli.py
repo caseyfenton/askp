@@ -86,7 +86,7 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 )
 @click.option("--output", "-o", type=click.Path(), help="Output file path")
 @click.option("--num-results", "-n", type=int, default=1, help="Number of results per query")
-@click.option("--model", "-m", type=str, default="sonar-reasoning", help="Model to use (see --model-help for full details)")
+@click.option("--model", "-m", type=str, default="sonar", help="Model to use (see --model-help for full details)")
 @click.option("--basic", "-b", is_flag=True, help="Use basic Sonar model (fastest, cheapest, good for simple factual queries)")
 @click.option("--reasoning-pro", "-r", is_flag=True, help="⚠️ EXPENSIVE: Use enhanced reasoning model (10-20x cost, better for complex analysis)")
 @click.option("--code", "-X", is_flag=True, help="Use code-optimized model (best for programming questions, technical analysis)")
@@ -165,6 +165,11 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
     # Normalize the model name
     model = normalize_model_name(model)
     
+    # Show FAST MODE notification for basic model
+    if model == "sonar" and not quiet:
+        rprint("[green]🚀 FAST MODE[/green] - Using basic sonar model for quick responses")
+        rprint("[dim]For more thorough analysis, use --reasoning or -m sonar-reasoning[/dim]\n")
+    
     # ⚠️ COST WARNING FOR EXPENSIVE MODELS ⚠️
     expensive_models = ["sonar-reasoning-pro", "sonar-pro", "reasoning-pro", "pro"]
     if any(expensive in model.lower() for expensive in expensive_models):
@@ -206,7 +211,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         click.echo(ctx.get_help())
         ctx.exit()
     opts: Dict[str, Any] = {"verbose": verbose, "quiet": quiet, "format": format, "output": output, "num_results": num_results,
-         "model": model, "temperature": temperature, "max_tokens": token_max, "reasoning": reasoning_set, 
+         "model": model, "temperature": temperature, "token_max": token_max, "reasoning": reasoning_set, 
          "search_depth": search_depth, "combine": not no_combine, "max_parallel": max_parallel, 
          "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set, 
          "output_dir": get_output_dir(), "multi": not single,

@@ -101,7 +101,7 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     # Models are now directly selected by CLI flags
     
     temperature = float(opts.get("temperature", 0.7))
-    max_tokens = int(opts.get("token_max", 4096))
+    max_tokens = int(opts.get("token_max") or 4096)
     search_depth = opts.get("search_depth", "medium")
     
     # Get debug and verbose settings first
