@@ -186,12 +186,12 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
         return None
     od = get_output_dir()
     rf = save_result_file(q, res, i, od, opts)
-    rel_path = format_path(rf)
+    abs_path = str(rf)  # Use absolute path for agents
     res.setdefault("metadata", {})["saved_path"] = rf
     if opts.get("suppress_model_display", False):
         t = q[:40] + "..." if len(q) > 40 else q
         bytes_count = len(res["results"][0].get("content", "")) if res.get("results") else len(res.get("content", ""))
-        
+
         # Check if we have a successful response with cost information
         if "error" in res:
             # Display error message without cost information
@@ -200,7 +200,7 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
             # Display normal success message with cost
             print(f'{i+1}: "{t}"  {format_size(bytes_count)} | {res.get("tokens", 0)}T | ${res["metadata"].get("cost", 0):.4f}')
     else:
-        print(f"Saved: {rel_path}")
+        print(f"Saved: {abs_path}")
     
     # Only create the combined file if no_combine is not set and combine is set
     if not opts.get("no_combine", False) and opts.get("combine") and lock and i == opts.get("total_queries", 0) - 1:
