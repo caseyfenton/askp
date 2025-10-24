@@ -17,11 +17,26 @@ from typing import Optional, List, Dict, Any, Tuple, Union
 from rich import print as rprint
 
 from .formatters import format_json, format_markdown, format_text
-from .utils import (format_size, sanitize_filename, load_api_key, get_model_info, 
+from .utils import (format_size, sanitize_filename, load_api_key, get_model_info,
                    normalize_model_name, estimate_cost, get_output_dir,
                    generate_combined_filename, generate_unique_id)
 from .file_utils import format_path, generate_cat_commands
 from .api import search_perplexity as sp
+
+def index_with_sema(result_path: Path) -> None:
+    """Index newly created result with SEMA for future cache hits."""
+    try:
+        import subprocess
+        subprocess.run(
+            ['sema', '--index'],
+            cwd=result_path.parent,
+            capture_output=True,
+            timeout=10,
+            check=False  # Don't fail if sema not available
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        # SEMA not available, skip indexing (don't break askp)
+        pass
 
 def save_result_file(query: str, result: dict, index: int, output_dir: str, opts: Optional[Dict[str, Any]] = None) -> str:
     """
@@ -71,7 +86,10 @@ def save_result_file(query: str, result: dict, index: int, output_dir: str, opts
     else:
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
-    
+
+    # Index with SEMA for future cache hits
+    index_with_sema(Path(filepath))
+
     return filepath
 
 def append_to_combined(query: str, result: dict, index: int, output_dir: str, 
@@ -162,21 +180,24 @@ def append_to_combined(query: str, result: dict, index: int, output_dir: str,
                 f.write(f"\nQuery {index+1}: {query}\n\n")
                 f.write(format_text(result))
                 f.write("\n---\n")
-        
+
         else:
             # Default to markdown
             if index == 0 or not os.path.exists(combined_filepath):
                 # Create a new file for the first result
                 with open(combined_filepath, "w", encoding="utf-8") as f:
                     f.write(f"# Combined Results ({num_queries} queries)\n\n")
-            
+
             # Append this result
             with open(combined_filepath, "a", encoding="utf-8") as f:
                 f.write(f"\n## Query {index+1}: {query}\n\n")
                 content = format_markdown(result).replace("# ", "### ")
                 f.write(content)
                 f.write("\n---\n")
-    
+
+        # Index with SEMA after each write (for incremental updates)
+        index_with_sema(Path(combined_filepath))
+
     return combined_filepath
 
 def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = None) -> Optional[dict]:
@@ -581,7 +602,10 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
     except PermissionError:
         print(f"Error: Permission denied writing to {out_file}")
         return
-    
+
+    # Index with SEMA for future cache hits
+    index_with_sema(Path(out_file))
+
     rel_path = format_path(out_file)
     
     # Handle viewing content directly vs showing paths based on --view flag

@@ -116,10 +116,11 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--debug", is_flag=True, help="Save raw API responses for debugging and analysis")
 @click.option("--account-status", "--credits", is_flag=True, help="Check account status and remaining API credits")
 @click.option("--account-details", is_flag=True, help="Show detailed account information including rate limits")
-def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro, 
-        search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file, 
+@click.option("--no-cache", "-NC", is_flag=True, help="Bypass SEMA cache and force fresh Perplexity search")
+def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro,
+        search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file,
         no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, comprehensive, quick, code_check, debug,
-        account_status, account_details):
+        account_status, account_details, no_cache):
     """ASKP - Advanced knowledge search using Perplexity AI
 
     Run natural language searches directly from your terminal. Use multiple queries,
@@ -210,13 +211,51 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
     if not queries:
         click.echo(ctx.get_help())
         ctx.exit()
+
+    # Check SEMA cache for single queries (before processing)
+    if not no_cache and len(queries) == 1:
+        from .cache import check_sema_cache, should_use_cache, format_cache_results
+        from pathlib import Path
+
+        cached_results = check_sema_cache(queries[0])
+        if cached_results:
+            use_cache, message = should_use_cache(cached_results, no_cache)
+
+            if use_cache:
+                print(message)
+                print(format_cache_results(cached_results))
+
+                # Display cached files with error handling
+                for result in cached_results[:5]:
+                    filepath = Path(result['path'])
+                    print(f"\n--- {filepath.name} ---")
+                    try:
+                        # Check file size to prevent OOM
+                        file_size = filepath.stat().st_size
+                        if file_size > 10 * 1024 * 1024:  # 10MB limit
+                            print(f"[File too large to display: {file_size / 1024 / 1024:.1f}MB]")
+                            continue
+
+                        with open(filepath, encoding='utf-8', errors='replace') as f:
+                            content = f.read()
+                            if view_lines:
+                                lines = content.split('\n')[:view_lines]
+                                print('\n'.join(lines))
+                            else:
+                                print(content)
+                    except (FileNotFoundError, PermissionError, IsADirectoryError) as e:
+                        print(f"[Error reading cached file: {e}]")
+                    except UnicodeDecodeError:
+                        print(f"[File contains non-text data, skipping]")
+                ctx.exit()
+
     opts: Dict[str, Any] = {"verbose": verbose, "quiet": quiet, "format": format, "output": output, "num_results": num_results,
-         "model": model, "temperature": temperature, "token_max": token_max, "reasoning": reasoning_set, 
-         "search_depth": search_depth, "combine": not no_combine, "max_parallel": max_parallel, 
-         "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set, 
+         "model": model, "temperature": temperature, "token_max": token_max, "reasoning": reasoning_set,
+         "search_depth": search_depth, "combine": not no_combine, "max_parallel": max_parallel,
+         "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set,
          "output_dir": get_output_dir(), "multi": not single,
          "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "comprehensive": comprehensive, "debug": debug,
-         "no_combine": no_combine}
+         "no_combine": no_combine, "no_cache": no_cache}
     if expand:
         opts["expand"] = expand
     if deep and deep_custom:
