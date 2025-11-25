@@ -41,14 +41,14 @@ def index_with_sema(result_path: Path) -> None:
 def save_result_file(query: str, result: dict, index: int, output_dir: str, opts: Optional[Dict[str, Any]] = None) -> str:
     """
     Save query result to a file and return the filepath.
-    
+
     Args:
         query: The query text
         result: Query result dictionary
         index: Query index
         output_dir: Directory to save results in
         opts: Options dictionary containing format preference
-    
+
     Returns:
         Path to the saved file
     """
@@ -56,24 +56,46 @@ def save_result_file(query: str, result: dict, index: int, output_dir: str, opts
     import json
     from datetime import datetime
     from .formatters import format_markdown, format_json, format_text
-    
+    from .agent_response import AgentResponseCache, format_agent_index
+
     opts = opts or {}
     format_type = opts.get("format", "markdown").lower()
-    
+    agent_mode = opts.get("agent_mode", False)
+
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     query_part = sanitize_filename(query[:50])
-    
-    # Determine file extension and content based on format type
-    if format_type == "json":
-        file_ext = ".json"
-        content = result  # Will be JSON-serialized later
-    elif format_type == "text":
-        file_ext = ".txt"
-        content = format_text(result)
-    else:  # Default to markdown
-        file_ext = ".md"
-        content = format_markdown(result)
+
+    # Determine file extension and content based on format type and agent mode
+    if agent_mode and "structured_content" in result:
+        # Cache the full response for later retrieval
+        cache = AgentResponseCache()
+        query_id = result.get("metadata", {}).get("uuid")
+        if query_id:
+            cache.store(query_id, result)
+
+        # For agent mode, save lightweight index by default
+        index_data = cache.get_index(query_id)
+
+        if format_type == "json":
+            file_ext = ".json"
+            content = index_data
+        else:
+            file_ext = ".md"
+            content = format_agent_index(index_data)
+            content += f"\n\n---\n**Query ID:** `{query_id}`\n\nUse this ID to retrieve modules:\n"
+            content += f"```bash\naskp --agent-module <ID> --query-id {query_id}\n```\n"
+    else:
+        # Regular mode processing
+        if format_type == "json":
+            file_ext = ".json"
+            content = result  # Will be JSON-serialized later
+        elif format_type == "text":
+            file_ext = ".txt"
+            content = format_text(result)
+        else:  # Default to markdown
+            file_ext = ".md"
+            content = format_markdown(result)
     
     # Create filename and full path
     filename = f"query_{index+1}_{timestamp}_{query_part}{file_ext}"
