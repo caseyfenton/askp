@@ -18,6 +18,14 @@ from rich.table import Table
 from rich.panel import Panel
 import requests
 
+# Import agent response handling
+from .agent_response import (
+    AGENT_SYSTEM_PROMPT,
+    get_response_format_config,
+    parse_agent_response,
+    validate_agent_response
+)
+
 ModelType = Literal[
     # Legacy Sonar Models
     "sonar", "sonar-pro", "sonar-reasoning", "sonar-reasoning-pro", "sonar-deep-research",
@@ -130,26 +138,41 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     try:
         if verbose and not opts.get("quiet", False):
             rprint("Sending query to Perplexity API...")
-        
-        # Configure additional parameters based on search depth
+
+        # Check if agent mode is enabled
+        agent_mode = opts.get("agent_mode", False)
+
+        # Configure additional parameters based on search depth or agent mode
         system_message = None
-        if search_depth == "low":
+        if agent_mode:
+            # Use agent-specific system prompt
+            system_message = AGENT_SYSTEM_PROMPT
+        elif search_depth == "low":
             system_message = "Provide a brief answer with minimal search."
         elif search_depth == "high":
             system_message = "Provide a comprehensive answer with deep search across many sources."
-        
+
         messages = []
         if system_message:
             messages.append({"role": "system", "content": system_message})
         messages.append({"role": "user", "content": q})
-        
+
+        # Prepare API call parameters
+        api_params = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+
+        # Add response_format for agent mode
+        if agent_mode:
+            api_params["response_format"] = get_response_format_config()
+            if debug:
+                rprint("[cyan]Agent mode enabled: Using structured JSON response format[/cyan]")
+
         try:
-            completion = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            completion = client.chat.completions.create(**api_params)
         except openai.AuthenticationError as e:
             error_msg = f"Authentication error: {e}. Please check your API key."
             rprint(f"{error_msg}")
@@ -180,10 +203,13 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
             content = completion.choices[0].message.content
             ob = len(content.encode("utf-8"))
             total = completion.usage.total_tokens
-            
+
             mi = get_model_info(model)
             cost = estimate_cost(total, mi)
-            
+
+            # Generate unique ID for this query (for caching)
+            query_id = str(uuid.uuid4())
+
             result: PerplexityResponse = {
                 "content": content,
                 "model": model,
@@ -194,9 +220,39 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
                     "cost": cost,
                     "elapsed_time": response_time,
                     "timestamp": time.time(),
-                    "uuid": str(uuid.uuid4())
+                    "uuid": query_id,
+                    "agent_mode": agent_mode
                 }
             }
+
+            # If agent mode is enabled, parse and validate the structured response
+            if agent_mode:
+                try:
+                    structured_content = parse_agent_response(content)
+                    is_valid, error_msg = validate_agent_response(structured_content)
+
+                    if not is_valid:
+                        rprint(f"[yellow]Warning: Agent response validation failed: {error_msg}[/yellow]")
+                        if debug:
+                            rprint(f"[dim]Raw content: {content[:200]}...[/dim]")
+
+                    # Store the structured content in the result
+                    result["structured_content"] = structured_content
+                    result["metadata"]["validated"] = is_valid
+                    result["metadata"]["validation_error"] = error_msg
+
+                    if debug:
+                        rprint(f"[green]Structured response parsed successfully[/green]")
+                        rprint(f"  Decision: {structured_content.get('decision_context', {}).get('outcome', 'unknown')}")
+                        rprint(f"  Entities: {len(structured_content.get('entity_graph', []))}")
+                        rprint(f"  Modules: {len(structured_content.get('content_modules', []))}")
+
+                except ValueError as e:
+                    rprint(f"[red]Failed to parse agent response: {e}[/red]")
+                    result["metadata"]["parse_error"] = str(e)
+                except Exception as e:
+                    rprint(f"[red]Error processing agent response: {e}[/red]")
+                    result["metadata"]["processing_error"] = str(e)
             
             # Extract citation URLs if present in the response
             citations = []

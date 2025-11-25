@@ -117,10 +117,14 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--account-status", "--credits", is_flag=True, help="Check account status and remaining API credits")
 @click.option("--account-details", is_flag=True, help="Show detailed account information including rate limits")
 @click.option("--no-cache", "-NC", is_flag=True, help="Bypass SEMA cache and force fresh Perplexity search")
+@click.option("--agent-mode", "-A", is_flag=True, help="Enable agent-centric JSON mode with structured output (for autonomous agents)")
+@click.option("--agent-index", is_flag=True, help="Output only the lightweight index (decision_context + entity_graph + module index)")
+@click.option("--agent-module", type=int, metavar="ID", help="Retrieve a specific content module by ID from a cached response")
+@click.option("--query-id", type=str, help="Query ID (UUID) for retrieving cached agent responses (use with --agent-index or --agent-module)")
 def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro,
         search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file,
         no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, comprehensive, quick, code_check, debug,
-        account_status, account_details, no_cache):
+        account_status, account_details, no_cache, agent_mode, agent_index, agent_module, query_id):
     """ASKP - Advanced knowledge search using Perplexity AI
 
     Run natural language searches directly from your terminal. Use multiple queries,
@@ -146,7 +150,52 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
     if account_status or account_details:
         handle_account_status_check(verbose=account_details)
         ctx.exit()
-    
+
+    # Handle agent mode retrieval operations (--agent-index, --agent-module)
+    if agent_index or agent_module is not None:
+        from .agent_response import AgentResponseCache, format_agent_index
+        import json
+
+        if not query_id:
+            rprint("[red]Error: --query-id is required for agent index/module retrieval[/red]")
+            rprint("Usage:")
+            rprint("  askp --agent-index --query-id <UUID>")
+            rprint("  askp --agent-module <ID> --query-id <UUID>")
+            ctx.exit(1)
+
+        cache = AgentResponseCache()
+
+        if agent_index:
+            # Retrieve and display index only
+            index = cache.get_index(query_id)
+            if not index:
+                rprint(f"[red]No cached response found for query ID: {query_id}[/red]")
+                ctx.exit(1)
+
+            if format == "json":
+                print(json.dumps(index, indent=2))
+            else:
+                print(format_agent_index(index))
+            ctx.exit()
+
+        elif agent_module is not None:
+            # Retrieve specific module
+            module = cache.get_module(query_id, agent_module)
+            if not module:
+                rprint(f"[red]Module {agent_module} not found in query {query_id}[/red]")
+                ctx.exit(1)
+
+            if format == "json":
+                print(json.dumps(module, indent=2))
+            else:
+                # Display module in a readable format
+                print(f"## Module {module.get('id')}")
+                print(f"Tags: {', '.join(module.get('tags', []))}")
+                print(f"Tokens: ~{module.get('token_estimate', 0)}")
+                print("\n### Content\n")
+                print(module.get('raw_content', ''))
+            ctx.exit()
+
     # Select model based on flags (priority order)
     if basic or sonar:
         model = "sonar"
@@ -255,7 +304,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
          "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set,
          "output_dir": get_output_dir(), "multi": not single,
          "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "comprehensive": comprehensive, "debug": debug,
-         "no_combine": no_combine, "no_cache": no_cache}
+         "no_combine": no_combine, "no_cache": no_cache, "agent_mode": agent_mode}
     if expand:
         opts["expand"] = expand
     if deep and deep_custom:
