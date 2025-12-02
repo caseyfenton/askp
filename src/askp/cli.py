@@ -121,10 +121,11 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--agent-index", is_flag=True, help="Output only the lightweight index (decision_context + entity_graph + module index)")
 @click.option("--agent-module", type=int, metavar="ID", help="Retrieve a specific content module by ID from a cached response")
 @click.option("--query-id", type=str, help="Query ID (UUID) for retrieving cached agent responses (use with --agent-index or --agent-module)")
+@click.option("--compare", "-comp", is_flag=True, help="Run query in BOTH traditional and agent modes for comparison (generates 2 output files)")
 def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro,
         search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file,
         no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, comprehensive, quick, code_check, debug,
-        account_status, account_details, no_cache, agent_mode, agent_index, agent_module, query_id):
+        account_status, account_details, no_cache, agent_mode, agent_index, agent_module, query_id, compare):
     """ASKP - Advanced knowledge search using Perplexity AI
 
     Run natural language searches directly from your terminal. Use multiple queries,
