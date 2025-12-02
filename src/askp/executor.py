@@ -98,7 +98,8 @@ def save_result_file(query: str, result: dict, index: int, output_dir: str, opts
             content = format_markdown(result)
     
     # Create filename and full path
-    filename = f"query_{index+1}_{timestamp}_{query_part}{file_ext}"
+    compare_suffix = opts.get("compare_suffix", "")
+    filename = f"query_{index+1}_{timestamp}_{query_part}{compare_suffix}{file_ext}"
     filepath = os.path.join(output_dir, filename)
     
     # Save the file in the appropriate format

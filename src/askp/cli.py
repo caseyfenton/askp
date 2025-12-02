@@ -121,7 +121,7 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--agent-index", is_flag=True, help="Output only the lightweight index (decision_context + entity_graph + module index)")
 @click.option("--agent-module", type=int, metavar="ID", help="Retrieve a specific content module by ID from a cached response")
 @click.option("--query-id", type=str, help="Query ID (UUID) for retrieving cached agent responses (use with --agent-index or --agent-module)")
-@click.option("--compare", "-comp", is_flag=True, help="Run query in BOTH traditional and agent modes for comparison (generates 2 output files)")
+@click.option("--compare", is_flag=True, help="Run query in BOTH traditional and agent modes for comparison (generates 2 output files)")
 def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro,
         search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file,
         no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, comprehensive, quick, code_check, debug,
@@ -305,7 +305,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
          "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set,
          "output_dir": get_output_dir(), "multi": not single,
          "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "comprehensive": comprehensive, "debug": debug,
-         "no_combine": no_combine, "no_cache": no_cache, "agent_mode": agent_mode}
+         "no_combine": no_combine, "no_cache": no_cache, "agent_mode": agent_mode, "compare": compare}
     if expand:
         opts["expand"] = expand
     if deep and deep_custom:
@@ -321,6 +321,72 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
         is_deep, deep_opts = setup_deep_research(quiet, model, temperature, reasoning_set, opts["output_dir"], custom=False)
         opts.update(deep_opts)
     
+    # Handle comparison mode (run query in both traditional and agent modes)
+    if compare:
+        if len(queries) != 1:
+            rprint("[red]Error: --compare mode only works with a single query[/red]")
+            ctx.exit(1)
+
+        if not quiet:
+            print("\n🔄 COMPARISON MODE - Running query in both traditional and agent modes...")
+            if debug:
+                print(f"   Model: {model} | Temperature: {temperature}")
+            print("   Please wait...\n")
+
+        from .executor import execute_query, output_result
+
+        # Run traditional mode
+        opts_traditional = opts.copy()
+        opts_traditional["agent_mode"] = False
+        opts_traditional["compare_suffix"] = "_traditional"
+        if not quiet:
+            print("📝 Running TRADITIONAL mode...")
+        r_traditional = execute_query(queries[0], 0, opts_traditional)
+        if not r_traditional:
+            print("Error: Failed to get response from Perplexity API (traditional mode)")
+            sys.exit(1)
+        output_result(r_traditional, opts_traditional)
+
+        # Run agent mode
+        opts_agent = opts.copy()
+        opts_agent["agent_mode"] = True
+        opts_agent["compare_suffix"] = "_agent"
+        if not quiet:
+            print("\n🤖 Running AGENT mode...")
+        r_agent = execute_query(queries[0], 0, opts_agent)
+        if not r_agent:
+            print("Error: Failed to get response from Perplexity API (agent mode)")
+            sys.exit(1)
+        output_result(r_agent, opts_agent)
+
+        # Display comparison summary
+        if not quiet:
+            print("\n" + "="*60)
+            print("📊 COMPARISON SUMMARY")
+            print("="*60)
+            print(f"\n✅ Both modes completed successfully!")
+            print(f"\n📁 Output files:")
+            trad_path = r_traditional.get("metadata", {}).get("saved_path", "See above")
+            agent_path = r_agent.get("metadata", {}).get("saved_path", "See above")
+            print(f"   Traditional: {trad_path}")
+            print(f"   Agent:       {agent_path}")
+
+            # Show token/size comparison
+            trad_tokens = r_traditional.get("tokens", 0)
+            agent_tokens = r_agent.get("tokens", 0)
+            print(f"\n📈 Token comparison:")
+            print(f"   Traditional: {trad_tokens} tokens")
+            print(f"   Agent:       {agent_tokens} tokens")
+            if trad_tokens > 0:
+                savings = ((trad_tokens - agent_tokens) / trad_tokens) * 100
+                print(f"   Savings:     {savings:.1f}%")
+
+            print("\n💡 Agent mode provides lightweight index with lazy-loadable modules.")
+            print("   Use --agent-module <ID> --query-id <UUID> to load specific modules.")
+            print("="*60 + "\n")
+
+        ctx.exit()
+
     # Process queries based on mode
     if expand and expand > len(queries):
         print(f"Expanding {len(queries)} queries to {expand} total queries...")
