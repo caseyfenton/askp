@@ -122,10 +122,11 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--agent-module", type=int, metavar="ID", help="Retrieve a specific content module by ID from a cached response")
 @click.option("--query-id", type=str, help="Query ID (UUID) for retrieving cached agent responses (use with --agent-index or --agent-module)")
 @click.option("--compare", is_flag=True, help="Run query in BOTH traditional and agent modes for comparison (generates 2 output files)")
+@click.option("--compare-reasoning", is_flag=True, help="🧠 ASP2: Run query with BOTH regular and reasoning models to compare Q&A vs logic-chain outputs (generates 2 files)")
 def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro,
         search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file,
         no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, comprehensive, quick, code_check, debug,
-        account_status, account_details, no_cache, agent_mode, agent_index, agent_module, query_id, compare):
+        account_status, account_details, no_cache, agent_mode, agent_index, agent_module, query_id, compare, compare_reasoning):
     """ASKP - Advanced knowledge search using Perplexity AI
 
     Run natural language searches directly from your terminal. Use multiple queries,
@@ -305,7 +306,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
          "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set,
          "output_dir": get_output_dir(), "multi": not single,
          "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "comprehensive": comprehensive, "debug": debug,
-         "no_combine": no_combine, "no_cache": no_cache, "agent_mode": agent_mode, "compare": compare}
+         "no_combine": no_combine, "no_cache": no_cache, "agent_mode": agent_mode, "compare": compare, "compare_reasoning": compare_reasoning}
     if expand:
         opts["expand"] = expand
     if deep and deep_custom:
@@ -384,6 +385,79 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
             print("\n💡 Agent mode provides lightweight index with lazy-loadable modules.")
             print("   Use --agent-module <ID> --query-id <UUID> to load specific modules.")
             print("="*60 + "\n")
+
+        ctx.exit()
+
+    # Handle ASP2 reasoning comparison mode (regular vs reasoning models)
+    if compare_reasoning:
+        if len(queries) != 1:
+            rprint("[red]Error: --compare-reasoning mode only works with a single query[/red]")
+            ctx.exit(1)
+
+        if not quiet:
+            print("\n🧠 ASP2 COMPARISON MODE - Regular Q&A vs Logic Chain (Reasoning)")
+            print("   Comparing: sonar (Q&A) vs sonar-reasoning-pro (logic chain)")
+            if debug:
+                print(f"   Temperature: {temperature}")
+            print("   Please wait...\n")
+
+        from .executor import execute_query, output_result
+
+        # Run regular Q&A mode (sonar)
+        opts_qa = opts.copy()
+        opts_qa["model"] = "sonar"
+        opts_qa["compare_suffix"] = "_qa"
+        if not quiet:
+            print("📝 Running REGULAR Q&A mode (sonar)...")
+        r_qa = execute_query(queries[0], 0, opts_qa)
+        if not r_qa:
+            print("Error: Failed to get response from Perplexity API (Q&A mode)")
+            sys.exit(1)
+        output_result(r_qa, opts_qa)
+
+        # Run reasoning logic chain mode (sonar-reasoning-pro)
+        opts_reasoning = opts.copy()
+        opts_reasoning["model"] = "sonar-reasoning-pro"
+        opts_reasoning["compare_suffix"] = "_reasoning"
+        if not quiet:
+            print("\n🧠 Running REASONING logic chain mode (sonar-reasoning-pro)...")
+            rprint("[yellow]⚠️  Note: Reasoning models are 10-20x more expensive[/yellow]")
+        r_reasoning = execute_query(queries[0], 0, opts_reasoning)
+        if not r_reasoning:
+            print("Error: Failed to get response from Perplexity API (reasoning mode)")
+            sys.exit(1)
+        output_result(r_reasoning, opts_reasoning)
+
+        # Display ASP2 comparison summary
+        if not quiet:
+            print("\n" + "="*70)
+            print("🧠 ASP2 COMPARISON SUMMARY - Q&A vs Logic Chain")
+            print("="*70)
+            print(f"\n✅ Both modes completed successfully!")
+            print(f"\n📁 Output files:")
+            qa_path = r_qa.get("metadata", {}).get("saved_path", "See above")
+            reasoning_path = r_reasoning.get("metadata", {}).get("saved_path", "See above")
+            print(f"   Q&A (sonar):             {qa_path}")
+            print(f"   Reasoning (logic chain): {reasoning_path}")
+
+            # Show token/cost comparison
+            qa_tokens = r_qa.get("tokens", 0)
+            reasoning_tokens = r_reasoning.get("tokens", 0)
+            qa_cost = r_qa.get("metadata", {}).get("cost", 0)
+            reasoning_cost = r_reasoning.get("metadata", {}).get("cost", 0)
+
+            print(f"\n📈 Performance comparison:")
+            print(f"   Q&A:       {qa_tokens} tokens | ${qa_cost:.4f}")
+            print(f"   Reasoning: {reasoning_tokens} tokens | ${reasoning_cost:.4f}")
+
+            if qa_cost > 0:
+                cost_multiplier = reasoning_cost / qa_cost
+                print(f"   Cost Multiplier: {cost_multiplier:.1f}x")
+
+            print(f"\n💡 Reasoning model provides step-by-step logic chain thinking.")
+            print(f"   Use for complex analysis, multi-step reasoning, or debugging logic.")
+            print(f"   Regular Q&A model is faster and cheaper for simple fact retrieval.")
+            print("="*70 + "\n")
 
         ctx.exit()
 
