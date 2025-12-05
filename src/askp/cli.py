@@ -117,7 +117,7 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--account-status", "--credits", is_flag=True, help="Check account status and remaining API credits")
 @click.option("--account-details", is_flag=True, help="Show detailed account information including rate limits")
 @click.option("--no-cache", "-NC", is_flag=True, help="Bypass SEMA cache and force fresh Perplexity search")
-@click.option("--agent-mode", "-A", is_flag=True, help="Enable agent-centric JSON mode with structured output (for autonomous agents)")
+@click.option("--agent-mode/--human-mode", "-A/-H", default=True, help="Agent mode (default): structured JSON output. Use -H/--human-mode for verbose prose output")
 @click.option("--agent-index", is_flag=True, help="Output only the lightweight index (decision_context + entity_graph + module index)")
 @click.option("--agent-module", type=int, metavar="ID", help="Retrieve a specific content module by ID from a cached response")
 @click.option("--query-id", type=str, help="Query ID (UUID) for retrieving cached agent responses (use with --agent-index or --agent-module)")

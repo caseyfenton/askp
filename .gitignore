@@ -41,7 +41,9 @@ pytest-report.xml
 tests/test_logs/
 
 # Temporary and backup files
-tmp/
+/tmp/
+# BUT explicitly track .claude/tmp/ - contains valuable analysis work
+!.claude/tmp/
 temp/
 *~
 *.bak

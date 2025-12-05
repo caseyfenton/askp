@@ -155,7 +155,7 @@ class AgentResponseCache:
 
 def parse_agent_response(raw_content: str) -> Dict[str, Any]:
     """
-    Parse agent response content, handling potential markdown fences.
+    Parse agent response content, handling potential markdown fences and thinking tags.
 
     Args:
         raw_content: Raw response string from Perplexity API
@@ -163,8 +163,17 @@ def parse_agent_response(raw_content: str) -> Dict[str, Any]:
     Returns:
         Parsed JSON structure
     """
-    # Strip potential markdown code fences
+    import re
+
     content = raw_content.strip()
+
+    # Strip <think>...</think> tags from reasoning models (case-insensitive)
+    content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL | re.IGNORECASE)
+    # Also catch unclosed <think> tags (malformed responses)
+    content = re.sub(r'<think>.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+    content = content.strip()
+
+    # Strip potential markdown code fences
     if content.startswith("```json"):
         content = content[7:]
     elif content.startswith("```"):

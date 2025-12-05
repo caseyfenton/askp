@@ -248,7 +248,7 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
                         rprint(f"  Modules: {len(structured_content.get('content_modules', []))}")
 
                 except ValueError as e:
-                    rprint(f"[red]Failed to parse agent response: {e}[/red]")
+                    rprint(f"[yellow]Note: Structured parsing skipped (raw content saved): {str(e)[:100]}[/yellow]")
                     result["metadata"]["parse_error"] = str(e)
                 except Exception as e:
                     rprint(f"[red]Error processing agent response: {e}[/red]")
