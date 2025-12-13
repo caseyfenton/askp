@@ -217,10 +217,9 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
     # Normalize the model name
     model = normalize_model_name(model)
     
-    # Show FAST MODE notification for basic model
+    # Show FAST MODE notification for basic model (single line)
     if model == "sonar" and not quiet:
-        rprint("[green]🚀 FAST MODE[/green] - Using basic sonar model for quick responses")
-        rprint("[dim]For more thorough analysis, use --reasoning or -m sonar-reasoning[/dim]\n")
+        rprint("[dim]Fast mode (sonar) • Use -r/--reasoning for complex analysis[/dim]")
     
     # ⚠️ COST WARNING FOR EXPENSIVE MODELS ⚠️
     expensive_models = ["sonar-reasoning-pro", "sonar-pro", "reasoning-pro", "pro"]

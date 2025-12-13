@@ -455,7 +455,17 @@ def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
         if not opts.get("human", False) and not opts.get("view", False):
             import click
             click.echo(out)
-    
+
+    # Show module summary for agent mode (helps agents know what to drill into)
+    if opts.get("agent_mode", False) and not opts.get("quiet", False):
+        structured = res.get("structured_content", {})
+        modules = structured.get("content_modules", [])
+        query_id = res.get("metadata", {}).get("uuid", "")
+        if modules and query_id:
+            module_tags = [f"{m.get('id')}:[{','.join(m.get('tags', [])[:2])}]" for m in modules[:5]]
+            print(f"\n📦 Modules: {' '.join(module_tags)}")
+            print(f"   Drill: askp --agent-module <ID> --query-id {query_id}")
+
     # Show where results are saved
     if not opts.get("quiet", False) and fmt != "json":
         saved_path = saved_path or res.get("metadata", {}).get("saved_path")
