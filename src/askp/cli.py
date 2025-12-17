@@ -41,9 +41,10 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
         # Use our custom implementation (multiple parallel queries)
         if not quiet:
             print("Custom deep research mode enabled (multiple parallel queries).")
+            sys.stdout.flush()  # Flush for live output in Claude Code
         opts["deep"] = True
         opts["custom_deep_research"] = True
-        
+
         # Ensure model is set to a reasoning model if not specified
         if not reasoning_set:
             opts["model"] = "sonar-reasoning-pro"
@@ -53,6 +54,7 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
         # Use Perplexity's built-in deep research model
         if not quiet:
             print("Deep research mode enabled (using Perplexity's built-in model).")
+            sys.stdout.flush()  # Flush for live output in Claude Code
         opts["model"] = "sonar-deep-research"
         # We still need to process the result but we don't need the multi-query processing
         opts["deep"] = False
@@ -176,8 +178,10 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
 
             if format == "json":
                 print(json.dumps(index, indent=2))
+                sys.stdout.flush()  # Flush for live output in Claude Code
             else:
                 print(format_agent_index(index))
+                sys.stdout.flush()  # Flush for live output in Claude Code
             ctx.exit()
 
         elif agent_module is not None:
@@ -189,6 +193,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
 
             if format == "json":
                 print(json.dumps(module, indent=2))
+                sys.stdout.flush()  # Flush for live output in Claude Code
             else:
                 # Display module in a readable format
                 print(f"## Module {module.get('id')}")
@@ -196,6 +201,7 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
                 print(f"Tokens: ~{module.get('token_estimate', 0)}")
                 print("\n### Content\n")
                 print(module.get('raw_content', ''))
+                sys.stdout.flush()  # Flush for live output in Claude Code
             ctx.exit()
 
     # Select model based on flags (priority order)

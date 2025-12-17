@@ -24,7 +24,7 @@ def format_path(filepath: str) -> str:
         # If the path doesn't go up directories, return the relative path
         if not rel_path.startswith('..'):
             return rel_path
-    except:
+    except (OSError, ValueError):
         pass  # Fall back to other methods if relative path failed
     
     # Only use tilde if we couldn't make a clean relative path

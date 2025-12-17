@@ -170,7 +170,7 @@ def append_to_combined(query: str, result: dict, index: int, output_dir: str,
                 try:
                     with open(combined_filepath, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                except:
+                except (OSError, json.JSONDecodeError):
                     # If file exists but is corrupt, start fresh
                     data = {
                         "metadata": {
@@ -240,17 +240,22 @@ def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = N
         if "error" in res:
             # Display error message without cost information
             print(f'{i+1}: "{t}"  Error')
+            sys.stderr.flush()  # Flush stderr for error messages
+            sys.stdout.flush()  # Flush for live output in Claude Code
         else:
             # Display normal success message with cost
             print(f'{i+1}: "{t}"  {format_size(bytes_count)} | {res.get("tokens", 0)}T | ${res["metadata"].get("cost", 0):.4f}')
+            sys.stdout.flush()  # Flush for live output in Claude Code
     else:
         print(f"Saved: {abs_path}")
-    
+        sys.stdout.flush()  # Flush for live output in Claude Code
+
     # Only create the combined file if no_combine is not set and combine is set
     if not opts.get("no_combine", False) and opts.get("combine") and lock and i == opts.get("total_queries", 0) - 1:
         cf = append_to_combined(q, res, i, od, lock, opts)
         if not opts.get("quiet", False):
             print(f"Combined results saved to {format_path(cf)}")
+            sys.stdout.flush()  # Flush for live output in Claude Code
     return res
 
 def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
@@ -280,28 +285,31 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
             model = opts.get("model", "sonar-deep-research")
             if not opts.get("quiet", False):
                 print(f"Using Perplexity's deep research model: {model}")
-            
+                sys.stdout.flush()  # Flush for live output in Claude Code
+
             # The sonar-deep-research model handles everything in one query
             # Just note that we're in deep research mode for output formatting
             opts["deep_single_query"] = True
-    
+
     # Only mention "parallel" for multiple queries
     if len(queries) > 1:
         if not opts.get("quiet", False):
             print(f"\nProcessing {len(queries)} queries in parallel...")
+            sys.stdout.flush()  # Flush for live output in Claude Code
     else:
         # Only show basic processing message if not a sub-query of deep research
         # Processing message is now handled by the CLI module
         pass
-        
+
     from .utils import get_model_info
     model = opts.get("model", "sonar-reasoning")
     model_info = get_model_info(model)
-    
+
     # Only show model info if not processing sub-queries for deep research
     if not opts.get("processing_subqueries", False):
         if not opts.get("quiet", False):
             print(f"Model: {model_info['display_name']} | Temp: {opts.get('temperature', 0.7)}")
+            sys.stdout.flush()  # Flush for live output in Claude Code
     
     opts["suppress_model_display"] = True
     results: List[Optional[dict]] = []
@@ -329,21 +337,26 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
                     max_lines = view_lines_count
                 
                 content_lines = result["content"].split('\n')
-                
+
                 print("\nQuery Result:")
-                
+                sys.stdout.flush()  # Flush for live output in Claude Code
+
                 if len(content_lines) > max_lines:
                     # Show limited content with message about remaining lines
                     for line in content_lines[:max_lines]:
                         print(line)
+                    sys.stdout.flush()  # Flush for live output in Claude Code
                     remaining = len(content_lines) - max_lines
                     print(f"\n... {remaining} more lines not shown.")
                     print(f"To view full results: cat {result.get('metadata', {}).get('saved_path', '')}")
+                    sys.stdout.flush()  # Flush for live output in Claude Code
                 else:
                     # Show all content
                     print(result["content"])
-                
+                    sys.stdout.flush()  # Flush for live output in Claude Code
+
                 print("\n")
+                sys.stdout.flush()  # Flush for live output in Claude Code
     else:
         # For multiple queries, use parallel processing
         od = get_output_dir(opts.get("output_dir"))
@@ -365,6 +378,8 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
                         total_cost += r.get("metadata", {}).get("cost", 0)  # Safely access cost with default
                 except Exception as e:
                     print(f"Error processing query {i+1}: {e}")
+                    sys.stderr.flush()  # Flush stderr for error messages
+                    sys.stdout.flush()  # Flush for live output in Claude Code
         else:
             # For more queries, use ThreadPoolExecutor but with safeguards
             with ThreadPoolExecutor(max_workers=min(max_parallel, len(queries))) as ex:
@@ -379,6 +394,8 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
                             total_cost += r.get("metadata", {}).get("cost", 0.0)
                     except Exception as e:
                         print(f"Error in future: {e}")
+                        sys.stderr.flush()  # Flush stderr for error messages
+                        sys.stdout.flush()  # Flush for live output in Claude Code
     
     elapsed = time.time() - start_time
     qps = len(results)/elapsed if elapsed > 0 else 0
@@ -398,13 +415,15 @@ def handle_multi_query(queries: List[str], opts: dict) -> List[Optional[dict]]:
         if not opts.get("quiet", False):
             print("\nDONE!")
             print(f"Queries processed: {len(results)}/{len(queries)}")
-        
+            sys.stdout.flush()  # Flush for live output in Claude Code
+
         # Show list of individual files
         suggest_cat_commands(results, od)
-        
+
         # Also include the stats summary
         if not opts.get("quiet", False):
             print(f"\n{len(results)} queries | {total_tokens:,}T | ${total_cost:.4f} | {elapsed:.1f}s ({qps:.1f}q/s)")
+            sys.stdout.flush()  # Flush for live output in Claude Code
     
     return results
 
@@ -419,11 +438,14 @@ def suggest_cat_commands(results: List[dict], output_dir: str) -> None:
             print(f"\n== {group_name} Commands ==")
             for cmd in commands:
                 print(f"  {cmd}")
+            sys.stdout.flush()  # Flush for live output in Claude Code
 
 def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
     """Format result and output to terminal or file."""
     if not res:
         print("Error: No result to output")
+        sys.stderr.flush()  # Flush stderr for error messages
+        sys.stdout.flush()  # Flush for live output in Claude Code
         return
     
     fmt = opts.get("format", "markdown")
@@ -440,7 +462,8 @@ def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
             print("\nQuery Result:")
             print(res["content"])
             print("\n")
-    
+            sys.stdout.flush()  # Flush for live output in Claude Code
+
     # Save to file if output is specified
     saved_path = None
     if opts.get("output", None):
@@ -450,11 +473,14 @@ def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
             saved_path = opts["output"]
         except PermissionError:
             print(f"Error: Permission denied writing to {opts['output']}")
+            sys.stderr.flush()  # Flush stderr for error messages
+            sys.stdout.flush()  # Flush for live output in Claude Code
     else:
         # Only echo output if not being displayed by other means
         if not opts.get("human", False) and not opts.get("view", False):
             import click
             click.echo(out)
+            sys.stdout.flush()  # Flush for live output in Claude Code
 
     # Show module summary for agent mode (helps agents know what to drill into)
     if opts.get("agent_mode", False) and not opts.get("quiet", False):
@@ -465,6 +491,7 @@ def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
             module_tags = [f"{m.get('id')}:[{','.join(m.get('tags', [])[:2])}]" for m in modules[:5]]
             print(f"\n📦 Modules: {' '.join(module_tags)}")
             print(f"   Drill: askp --agent-module <ID> --query-id {query_id}")
+            sys.stdout.flush()  # Flush for live output in Claude Code
 
     # Show where results are saved
     if not opts.get("quiet", False) and fmt != "json":
@@ -472,7 +499,8 @@ def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
         if saved_path:
             rel_path = format_path(saved_path)
             print(f"\n📁 Full results saved to: {rel_path}")
-    
+            sys.stdout.flush()  # Flush for live output in Claude Code
+
     # Show tips occasionally
     if saved_path and not opts.get("quiet", False):
         from .tips import get_formatted_tip
@@ -480,11 +508,13 @@ def output_result(res: Optional[Dict[str, Any]], opts: Dict[str, Any]) -> None:
             tip = get_formatted_tip()
             if tip:
                 print(tip)
+                sys.stdout.flush()  # Flush for live output in Claude Code
 
 def output_multi_results(results: List[dict], opts: dict) -> None:
     """Combine and output results from multiple queries to a file."""
     if not results:
         print("No results to output!")
+        sys.stdout.flush()  # Flush for live output in Claude Code
         return
     
     import json
@@ -634,6 +664,8 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
             f.write(out)
     except PermissionError:
         print(f"Error: Permission denied writing to {out_file}")
+        sys.stderr.flush()  # Flush stderr for error messages
+        sys.stdout.flush()  # Flush stdout for live output in Claude Code
         return
 
     # Index with SEMA for future cache hits
@@ -649,7 +681,8 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
         if should_view and fmt == "markdown":
             # Display content directly
             print("\n📊 Query Results:")
-            
+            sys.stdout.flush()  # Flush for live output in Claude Code
+
             if is_deep and not is_custom_deep:
                 # For built-in deep research, just show the main content
                 if results and results[0]:
@@ -662,10 +695,13 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
                         # Show limited content with message about remaining lines
                         for line in content_lines[:max_lines]:
                             print(line)
+                        sys.stdout.flush()  # Flush for live output in Claude Code
                         remaining = len(content_lines) - max_lines
                         print(f"\n... {remaining} more lines not shown.")
+                        sys.stdout.flush()  # Flush for live output in Claude Code
                     else:
                         print(content)
+                        sys.stdout.flush()  # Flush for live output in Claude Code
             else:
                 # For regular multi-query or custom deep research
                 for i, r in enumerate(results):
@@ -673,38 +709,46 @@ def output_multi_results(results: List[dict], opts: dict) -> None:
                         # Get max lines to display
                         view_lines = opts.get("view_lines")
                         max_lines = view_lines if view_lines is not None else 200
-                        
+
                         print(f"\n📝 Query {i+1}: {r['query']}")
-                        
+                        sys.stdout.flush()  # Flush for live output in Claude Code
+
                         # Display content with line limit
                         content_lines = r["content"].split('\n')
                         if len(content_lines) > max_lines:
                             # Show limited content with message about remaining lines
                             for line in content_lines[:max_lines]:
                                 print(line)
+                            sys.stdout.flush()  # Flush for live output in Claude Code
                             remaining = len(content_lines) - max_lines
                             print(f"\n... {remaining} more lines not shown.")
+                            sys.stdout.flush()  # Flush for live output in Claude Code
                         else:
                             print(r["content"])
-            
+                            sys.stdout.flush()  # Flush for live output in Claude Code
+
             # Always show where the file is saved
             print(f"\nFull results saved to: {rel_path}")
+            sys.stdout.flush()  # Flush for live output in Claude Code
         else:
             # Only show the combined results message for multiple queries, not single queries
             if len(results) > 1 or is_deep:
                 # Only mention the combined file if no_combine is not set
                 if not opts.get("no_combine", False):
                     print(f"Results saved to: {rel_path}")
-                
+                    sys.stdout.flush()  # Flush for live output in Claude Code
+
                 # Only show command suggestions if we're not already viewing the content with --view
                 if fmt == "markdown" and not is_deep:
                     suggest_cat_commands(results, out_dir)
             else:
                 # For single results that aren't being viewed, show where the file is saved
                 print(f"Results saved to: {rel_path}")
-    
+                sys.stdout.flush()  # Flush for live output in Claude Code
+
     # Also include the stats summary
     if not opts.get("quiet", False):
         print(f"\n{len(results)} queries | {tot_toks:,}T | ${tot_cost:.4f}")
+        sys.stdout.flush()  # Flush for live output in Claude Code
     
     return results

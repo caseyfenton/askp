@@ -410,7 +410,7 @@ def format_path(path: str) -> str:
     try:
         cwd = os.getcwd()
         return path[len(cwd)+1:] if path.startswith(cwd) else path
-    except:
+    except (OSError, ValueError):
         return path
 
 # Always use a local 'perplexity_results' directory in the current folder

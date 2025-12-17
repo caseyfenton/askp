@@ -123,7 +123,7 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
     
     if debug:
         print(f"Debug: Using API base URL: {client.base_url}")
-        print(f"Debug: API key starts with: {client.api_key[:10]}... ends with ...{client.api_key[-5:]}")
+        print(f"Debug: API key loaded successfully")
     
     model_info = get_model_info(model)
     
