@@ -54,18 +54,14 @@ def test_cli_help(runner):
     assert "--file" in result.output
     assert "--combine" in result.output
 
-@pytest.mark.xfail(reason="Needs update for new CLI workflow - complex mocking chain")
-@patch('askp.api.search_perplexity')
+@patch('askp.executor.sp')
 def test_cli_query(mock_search, runner, mock_result):
     """Test basic query functionality."""
     mock_search.return_value = mock_result
     with patch('askp.cli.get_output_dir', return_value=tempfile.gettempdir()):
-        with patch('builtins.open', MagicMock()):
-            with patch('builtins.print'):
-                result = runner.invoke(cli, ["test query"])
-                assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
-                # CLI completed successfully
-                assert mock_search.called, "search_perplexity should have been called"
+        result = runner.invoke(cli, ["test", "query"])
+        assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
+        assert mock_search.called, "search_perplexity should have been called"
 
 def test_cli_format():
     """Test output formatting."""
@@ -82,17 +78,15 @@ def test_cli_format():
     # The "# Search Results" header was removed as part of simplifying output format
     assert "Result 1" in md_out
 
-@pytest.mark.xfail(reason="Needs update for new CLI workflow - complex mocking chain")
-@patch('askp.api.search_perplexity')
+@patch('askp.executor.sp')
 def test_cli_output_file(mock_search, runner, mock_result, tmp_path):
     """Test writing output to a file."""
     mock_search.return_value = mock_result
     test_file = tmp_path / "output.md"
     with patch('askp.cli.get_output_dir', return_value=str(tmp_path)):
-        with patch('builtins.print'):
-            result = runner.invoke(cli, ["test query", "--output", str(test_file)])
-            assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
-            assert mock_search.called, "search_perplexity should have been called"
+        result = runner.invoke(cli, ["test", "query", "--output", str(test_file)])
+        assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
+        assert mock_search.called, "search_perplexity should have been called"
 
 @patch('os.path.exists')
 @patch('os.path.dirname')
@@ -101,8 +95,7 @@ def test_cli_output_file_parent_not_exists(mock_dirname, mock_exists, runner):
     # Skip test - error output formats have changed
     pytest.skip("Error handling has changed and needs test update")
 
-@pytest.mark.xfail(reason="Needs update for new CLI workflow - complex mocking chain")
-@patch('askp.api.search_perplexity')
+@patch('askp.executor.sp')
 def test_cli_verbose(mock_search, runner, mock_result):
     """Test verbose output."""
     verbose_result = dict(mock_result)
@@ -110,11 +103,9 @@ def test_cli_verbose(mock_search, runner, mock_result):
     verbose_result['metadata']['verbose'] = True
     mock_search.return_value = verbose_result
     with patch('askp.cli.get_output_dir', return_value=tempfile.gettempdir()):
-        with patch('builtins.open', MagicMock()):
-            with patch('builtins.print'):
-                result = runner.invoke(cli, ["test query", "--verbose"])
-                assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
-                assert mock_search.called, "search_perplexity should have been called"
+        result = runner.invoke(cli, ["test", "query", "--verbose"])
+        assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
+        assert mock_search.called, "search_perplexity should have been called"
 
 @patch('askp.cli.search_perplexity')
 def test_cli_quiet(mock_search, runner, mock_result):
@@ -129,8 +120,7 @@ def test_cli_quiet(mock_search, runner, mock_result):
                 # TODO: Update for new CLI output
     pytest.skip('Mocked handle_multi_query not called as expected. Needs update for new CLI workflow.')
 
-@pytest.mark.xfail(reason="Needs update for new CLI workflow - complex mocking chain")
-@patch('askp.api.search_perplexity')
+@patch('askp.executor.sp')
 def test_cli_num_results(mock_search, runner, mock_result):
     """Test number of results option."""
     multi_result = dict(mock_result)
@@ -143,23 +133,18 @@ def test_cli_num_results(mock_search, runner, mock_result):
     multi_result['metadata']['num_results'] = 3
     mock_search.return_value = multi_result
     with patch('askp.cli.get_output_dir', return_value=tempfile.gettempdir()):
-        with patch('builtins.open', MagicMock()):
-            with patch('builtins.print'):
-                result = runner.invoke(cli, ["test query", "-n", "3"])
-                assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
-                assert mock_search.called, "search_perplexity should have been called"
+        result = runner.invoke(cli, ["test", "query", "-n", "3"])
+        assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
+        assert mock_search.called, "search_perplexity should have been called"
 
-@pytest.mark.xfail(reason="Needs update for new CLI workflow - complex mocking chain")
-@patch('askp.api.search_perplexity')
+@patch('askp.executor.sp')
 def test_stdin_input(mock_search, runner, mock_result):
     """Test reading from stdin."""
     mock_search.return_value = mock_result
     with patch('askp.cli.get_output_dir', return_value=tempfile.gettempdir()):
-        with patch('builtins.open', MagicMock()):
-            with patch('builtins.print'):
-                result = runner.invoke(cli, input="stdin query")
-                assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
-                assert mock_search.called, "search_perplexity should have been called"
+        result = runner.invoke(cli, input="stdin query")
+        assert result.exit_code == 0, f"CLI exited with code {result.exit_code}. Exception: {result.exception}"
+        assert mock_search.called, "search_perplexity should have been called"
 
 @patch('click.echo')
 def test_empty_query(mock_echo, runner):

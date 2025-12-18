@@ -1,4 +1,4 @@
-__version__ = "2.4.2"
+__version__ = "2.4.5"
 
 # Don't import cli.py components directly in __init__.py
 # This prevents circular imports and the "found in sys.modules" RuntimeWarning
