@@ -22,11 +22,12 @@ OpenAI = openai.OpenAI
 # from .codecheck import handle_code_check  # Module doesn't exist, commenting out
 from .formatters import format_json, format_markdown, format_text
 from .file_utils import format_path, get_file_stats, generate_cat_commands
-from .utils import (load_api_key, format_size, sanitize_filename, get_model_info, 
+from .utils import (load_api_key, format_size, sanitize_filename, get_model_info,
                    normalize_model_name, estimate_cost, get_output_dir,
                    generate_combined_filename, generate_unique_id)
+from .pii_validator import get_pii_config_path, PIIValidator
 console = Console()
-VERSION = "2.4.5"
+VERSION = "2.5.0"
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
@@ -125,10 +126,13 @@ def setup_deep_research(quiet: bool, model: str, temperature: float, reasoning_s
 @click.option("--query-id", type=str, help="Query ID (UUID) for retrieving cached agent responses (use with --agent-index or --agent-module)")
 @click.option("--compare", is_flag=True, help="Run query in BOTH traditional and agent modes for comparison (generates 2 output files)")
 @click.option("--compare-reasoning", is_flag=True, help="🧠 ASP2: Run query with BOTH regular and reasoning models to compare Q&A vs logic-chain outputs (generates 2 files)")
+@click.option("--no-pii-check", is_flag=True, help="Disable PII validation for this query (use with caution)")
+@click.option("--pii-config", is_flag=True, help="Show PII validation configuration file location and status")
 def cli(query_text, verbose, quiet, format, output, num_results, model, basic, reasoning_pro, code, sonar, sonar_pro,
         search_depth, temperature, token_max, model_help, pro_reasoning, reasoning, single, max_parallel, file,
         no_combine, combine, view, view_lines, expand, deep, deep_custom, cleanup_component_files, comprehensive, quick, code_check, debug,
-        account_status, account_details, no_cache, agent_mode, agent_index, agent_module, query_id, compare, compare_reasoning):
+        account_status, account_details, no_cache, agent_mode, agent_index, agent_module, query_id, compare, compare_reasoning,
+        no_pii_check, pii_config):
     """ASKP - Advanced knowledge search using Perplexity AI
 
     Run natural language searches directly from your terminal. Use multiple queries,
@@ -153,6 +157,26 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
     # Check account status if requested (should happen before query processing)
     if account_status or account_details:
         handle_account_status_check(verbose=account_details)
+        ctx.exit()
+
+    # Show PII configuration if requested
+    if pii_config:
+        config_path = get_pii_config_path()
+        validator = PIIValidator(config_path)
+
+        rprint("\n[bold]PII Validation Configuration[/bold]")
+        rprint(f"Config file: {config_path}")
+        rprint(f"Status: [{'green' if validator.config.get('enabled') else 'red'}]{'ENABLED' if validator.config.get('enabled') else 'DISABLED'}[/]")
+        rprint(f"Mode: [cyan]{validator.config.get('mode', 'block')}[/cyan]")
+        rprint(f"Patterns: {len(validator.config.get('patterns', {}))} default + {len(validator.config.get('custom_patterns', {}))} custom")
+
+        rprint("\n[bold]Edit configuration:[/bold]")
+        rprint(f"  nano {config_path}")
+        rprint(f"  vim {config_path}")
+
+        rprint("\n[bold]Disable for single query:[/bold]")
+        rprint("  askp --no-pii-check \"your query\"")
+
         ctx.exit()
 
     # Handle agent mode retrieval operations (--agent-index, --agent-module)
@@ -317,7 +341,8 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
          "token_max_set_explicitly": token_max_set, "reasoning_set_explicitly": reasoning_set,
          "output_dir": get_output_dir(), "multi": not single,
          "cleanup_component_files": cleanup_component_files, "view": view, "view_lines": view_lines, "quick": quick, "comprehensive": comprehensive, "debug": debug,
-         "no_combine": no_combine, "no_cache": no_cache, "agent_mode": agent_mode, "compare": compare, "compare_reasoning": compare_reasoning}
+         "no_combine": no_combine, "no_cache": no_cache, "agent_mode": agent_mode, "compare": compare, "compare_reasoning": compare_reasoning,
+         "no_pii_check": no_pii_check}
     if expand:
         opts["expand"] = expand
     if deep and deep_custom:

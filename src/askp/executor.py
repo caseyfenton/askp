@@ -22,6 +22,7 @@ from .utils import (format_size, sanitize_filename, load_api_key, get_model_info
                    generate_combined_filename, generate_unique_id)
 from .file_utils import format_path, generate_cat_commands
 from .api import search_perplexity as sp
+from .pii_validator import validate_query_pii
 
 def index_with_sema(result_path: Path) -> None:
     """Index newly created result with SEMA for future cache hits."""
@@ -225,6 +226,13 @@ def append_to_combined(query: str, result: dict, index: int, output_dir: str,
 
 def execute_query(q: str, i: int, opts: dict, lock: Optional[threading.Lock] = None) -> Optional[dict]:
     """Execute a single query and save its result."""
+    # Validate query for PII before sending to API (unless disabled)
+    if not opts.get("no_pii_check", False):
+        quiet = opts.get("quiet", False)
+        if not validate_query_pii(q, quiet=quiet):
+            # Query blocked due to PII
+            return None
+
     res = sp(q, opts)
     if not res:
         return None

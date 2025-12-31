@@ -120,3 +120,16 @@ dmypy.json
 cython_debug/
 logs/
 config/
+# Internal development files
+AGENT_MODE*.md
+IMPLEMENTATION*.md
+PERPLEXITY_AGENT*.md
+QUICK_START_AGENT*.md
+*_CRITICAL_FINDINGS.txt
+*_DOCUMENTATION_INDEX.md
+*_MODULE_SYSTEM_ANALYSIS.md
+*_QUICK_REFERENCE_FOR_AGENTS.md
+test_queries.txt
+.askp-agent-mode-keywords.txt
+PERPLEXITY_EXPORT_GUIDE.md
+export_perplexity_conversations.py
