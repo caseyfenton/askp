@@ -147,6 +147,12 @@ def search_perplexity(q: str, opts: Dict[str, Any]) -> Optional[PerplexityRespon
         if agent_mode:
             # Use agent-specific system prompt
             system_message = AGENT_SYSTEM_PROMPT
+            # Add token compression for reasoning models in agent mode
+            if model == "sonar-reasoning-pro":
+                system_message += "\n\nIMPORTANT: Be extremely concise. Minimize tokens in all responses."
+        elif model == "sonar-reasoning-pro":
+            # Token-optimized prompt for reasoning models (non-agent mode)
+            system_message = "Be extremely concise and direct. Provide only essential information. Use short sentences. Avoid verbose explanations."
         elif search_depth == "low":
             system_message = "Provide a brief answer with minimal search."
         elif search_depth == "high":

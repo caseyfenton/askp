@@ -214,9 +214,9 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
     elif sonar_pro:
         model = "sonar-pro"
     elif reasoning:
-        # Handle legacy reasoning flag - try to maintain compatibility
+        # Handle legacy reasoning flag - map to new sonar-reasoning-pro model
         if model == "sonar":
-            model = "sonar-reasoning"
+            model = "sonar-reasoning-pro"
         elif model == "sonar-pro":
             model = "sonar-reasoning-pro"
         
@@ -243,6 +243,12 @@ def cli(query_text, verbose, quiet, format, output, num_results, model, basic, r
     
     token_max_set = token_max is not None
     reasoning_set = reasoning or reasoning_pro or pro_reasoning
+
+    # 🔥 COST PROTECTION: Set safe token limits for expensive reasoning models
+    if not token_max_set and model == "sonar-reasoning-pro":
+        token_max = 500  # Default to 500 tokens (~$0.004 per query)
+        if not quiet:
+            rprint("[dim cyan]💡 Auto-limiting to 500 tokens (~$0.004/query). Use --token_max to override.[/dim cyan]")
     queries = []
     if code_check:
         queries = handle_code_check(code_check, list(query_text), single, quiet)

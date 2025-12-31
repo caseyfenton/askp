@@ -24,6 +24,26 @@ MODEL_REGISTRY: Dict[str, Dict] = {
         "confidence_score": 0.95,
         "capabilities": ["enterprise-research", "large-context", "advanced-analysis"]
     },
+    "sonar-reasoning-pro": {
+        "id": "sonar-reasoning-pro",
+        "cost_per_million": 10.00,
+        "tokens_per_second": 800,
+        "context_window": 128000,
+        "max_output_tokens": 32000,
+        "description": "Advanced reasoning with chain-of-thought",
+        "confidence_score": 0.97,
+        "capabilities": ["advanced-reasoning", "chain-of-thought", "complex-analysis", "json-output"]
+    },
+    "sonar-deep-research": {
+        "id": "sonar-deep-research",
+        "cost_per_million": 15.00,
+        "tokens_per_second": 600,
+        "context_window": 200000,
+        "max_output_tokens": 32000,
+        "description": "Exhaustive multi-source research",
+        "confidence_score": 0.98,
+        "capabilities": ["deep-research", "multi-source", "academic-research", "market-analysis"]
+    },
     "pplx": {
         "id": "pplx-api",
         "cost_per_million": 1.50,
